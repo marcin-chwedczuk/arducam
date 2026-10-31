@@ -1,0 +1,15 @@
+@import 'pl/marcinchwedczuk/template/gui/Base';
+
+.mainWindow {
+
+}
+
+.log-window {
+    -fx-font-family: monospace;
+    -fx-text-fill: #33ff33;
+    -fx-font-size: 1.2em;
+
+    .content {
+        -fx-background-color: black;
+    }
+}
