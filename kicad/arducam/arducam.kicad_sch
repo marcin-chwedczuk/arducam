@@ -6120,6 +6120,121 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "power:PWR_FLAG"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#FLG"
+				(at 0 1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "PWR_FLAG"
+				(at 0 3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Special symbol for telling ERC where power comes from"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "flag power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "PWR_FLAG_0_0"
+				(pin power_out line
+					(at 0 0 90)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(symbol "PWR_FLAG_0_1"
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 1.27) (xy -1.016 1.905) (xy 0 2.54) (xy 1.016 1.905) (xy 0 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(junction
 		(at 142.24 191.77)
@@ -6156,6 +6271,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "12013e98-0b5d-4b26-b1c4-fd79e375b0bb")
+	)
+	(junction
+		(at 288.29 217.17)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "17141501-cf18-4cc9-907d-5f274746fa2d")
 	)
 	(junction
 		(at 36.83 214.63)
@@ -7312,6 +7433,16 @@
 			(type default)
 		)
 		(uuid "0ebd1f7d-e0fe-47de-8ebf-bd0bde283498")
+	)
+	(wire
+		(pts
+			(xy 288.29 217.17) (xy 293.37 217.17)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1107b8d9-7118-455a-ba91-f1d04eb3a8b2")
 	)
 	(wire
 		(pts
@@ -8515,6 +8646,16 @@
 	)
 	(wire
 		(pts
+			(xy 209.55 50.8) (xy 209.55 52.07)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7ae9a6da-c2dd-4531-ad89-ea3431819c0f")
+	)
+	(wire
+		(pts
 			(xy 17.78 59.69) (xy 29.21 59.69)
 		)
 		(stroke
@@ -9362,6 +9503,16 @@
 			(type default)
 		)
 		(uuid "aec1b5d8-2b69-4a71-b098-bed37e3c78c0")
+	)
+	(wire
+		(pts
+			(xy 64.77 16.51) (xy 69.85 16.51)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b068a056-d2a0-47cb-b6b3-2e414fb9ec9d")
 	)
 	(wire
 		(pts
@@ -10693,16 +10844,6 @@
 		)
 		(uuid "559585b3-2faa-4738-a23c-7bfde3ec0177")
 	)
-	(label "COUNTER_LOAD"
-		(at 248.92 110.49 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "5c69d25c-45a2-48b8-be5a-d76bceadbe5f")
-	)
 	(label "A[0..18]"
 		(at 184.15 34.29 0)
 		(effects
@@ -11895,7 +12036,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae69")
 		)
 		(instances
 			(project "arducam"
@@ -12371,7 +12512,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6a")
 		)
 		(instances
 			(project "arducam"
@@ -12573,7 +12714,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a2c6cf5a-c318-474a-8114-678823fef1e4")
+			(uuid "a2c6cf5a-c318-474a-8114-678823fef1e5")
 		)
 		(instances
 			(project "arducam"
@@ -13018,7 +13159,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fd")
 		)
 		(instances
 			(project "arducam"
@@ -13886,7 +14027,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6b")
 		)
 		(instances
 			(project "arducam"
@@ -13964,7 +14105,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6c")
 		)
 		(instances
 			(project "arducam"
@@ -14198,7 +14339,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6d")
 		)
 		(instances
 			(project "arducam"
@@ -14288,6 +14429,83 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 69.85 16.51 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "5de4e8ef-fef0-4f76-9795-cf18d787c618")
+		(property "Reference" "#PWR039"
+			(at 69.85 22.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 73.914 16.764 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 69.85 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 69.85 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 69.85 16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b67a7122-2baf-4d20-981a-1c307efe8c05")
+		)
+		(instances
+			(project "arducam"
+				(path "/eef36efb-3dcc-4de5-a19c-a6c39460d6d6"
+					(reference "#PWR039")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+5V")
 		(at 386.08 52.07 0)
 		(unit 1)
@@ -14354,88 +14572,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6e")
 		)
 		(instances
 			(project "arducam"
 				(path "/eef36efb-3dcc-4de5-a19c-a6c39460d6d6"
 					(reference "#PWR026")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "extra_parts:OV7670")
-		(at 232.41 109.22 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board no)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "68b5fbc4-2cc4-49af-b704-8b44d705a1f6")
-		(property "Reference" "U2"
-			(at 233.68 109.2199 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Value" ""
-			(at 232.41 109.22 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 232.41 109.22 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 232.41 109.22 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 232.41 109.22 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(instances
-			(project "arducam"
-				(path "/eef36efb-3dcc-4de5-a19c-a6c39460d6d6"
-					(reference "U2")
 					(unit 1)
 				)
 			)
@@ -14508,7 +14650,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae6f")
 		)
 		(instances
 			(project "arducam"
@@ -14586,7 +14728,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fe")
 		)
 		(instances
 			(project "arducam"
@@ -15071,7 +15213,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9ff")
 		)
 		(instances
 			(project "arducam"
@@ -15227,7 +15369,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae70")
 		)
 		(instances
 			(project "arducam"
@@ -15577,7 +15719,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae71")
 		)
 		(instances
 			(project "arducam"
@@ -15771,7 +15913,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2edea00")
 		)
 		(instances
 			(project "arducam"
@@ -16159,7 +16301,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "FT5HN"
+		(property "Value" "8MHz"
 			(at 68.58 25.3999 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -16291,7 +16433,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2edea01")
 		)
 		(instances
 			(project "arducam"
@@ -17133,7 +17275,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae72")
 		)
 		(instances
 			(project "arducam"
@@ -17459,7 +17601,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2edea02")
 		)
 		(instances
 			(project "arducam"
@@ -17618,7 +17760,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae73")
 		)
 		(instances
 			(project "arducam"
@@ -17894,12 +18036,90 @@
 			)
 		)
 		(pin "1"
-			(uuid "84597778-3b6a-4cb8-b047-ae94c2ede9fc")
+			(uuid "84597778-3b6a-4cb8-b047-ae94c2edea03")
 		)
 		(instances
 			(project "arducam"
 				(path "/eef36efb-3dcc-4de5-a19c-a6c39460d6d6"
 					(reference "#PWR014")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:PWR_FLAG")
+		(at 293.37 217.17 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "df918eed-acc8-4d2a-9aea-086799e3b1a6")
+		(property "Reference" "#FLG01"
+			(at 293.37 215.26 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 293.37 213.36 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 293.37 217.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 293.37 217.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Special symbol for telling ERC where power comes from"
+			(at 293.37 217.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "7aaafe6f-6f10-4391-803b-3eb860afb0c3")
+		)
+		(instances
+			(project "arducam"
+				(path "/eef36efb-3dcc-4de5-a19c-a6c39460d6d6"
+					(reference "#FLG01")
 					(unit 1)
 				)
 			)
@@ -18206,7 +18426,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae74")
 		)
 		(instances
 			(project "arducam"
@@ -18364,7 +18584,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae68")
+			(uuid "88fed9a8-ae93-4604-8d43-4a49bbbeae75")
 		)
 		(instances
 			(project "arducam"
