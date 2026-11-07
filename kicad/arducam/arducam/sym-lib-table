@@ -1,4 +1,0 @@
-(sym_lib_table
-	(version 7)
-	(lib (name "extra_parts") (type "KiCad") (uri "/Users/mc/dev/retroduino/kicad/arducam/extra_parts.kicad_sym") (options "") (descr ""))
-)
