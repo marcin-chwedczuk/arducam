@@ -14,6 +14,9 @@ memory chip myself. It worked better than I expected. Here I present the results
 Start by taking look at the [schematic](./kicad/arducam/plot/arducam.pdf), it shows how the memory chip is
 connected to OV7670 module.
 
+All the chips on the schematic should be 74HTC. I used what is by default in KiCad but if you want to
+reproduce the build, use 74HTC chips.
+
 In [Arduino](./arduino/) directory you will find two sketches:
 1. `self-test` that you may use to validate the hardware part
 2. `arducam` the actual firmware that works with the created Java FX app
