@@ -11,7 +11,7 @@ public record RawImage(int width, int height, PixelFormat format, byte[] data) {
     }
 
     public static int expectedBytes(int width, int height, PixelFormat format) {
-        return width * height * (format == PixelFormat.YUYV ? 2 : 1);
+        return width * height * format.bytesPerPixel();
     }
 
     @Override

@@ -26,7 +26,8 @@ import static java.util.Objects.requireNonNull;
  */
 public class ArducamDevice {
     public static final String EXPECTED_FIRMWARE = "arducam";
-    public static final String EXPECTED_PROTOCOL = "2";
+    /** Protocol v3 only adds optional CONFIG arguments, v2 firmware is still supported. */
+    public static final java.util.Set<String> SUPPORTED_PROTOCOLS = java.util.Set.of("2", "3");
     /** How many times {@code READ} is used to re-fetch an image with a bad CRC. */
     public static final int MAX_READ_RETRIES = 2;
 
@@ -42,8 +43,10 @@ public class ArducamDevice {
     private final ArducamClient client;
     /** What we believe the camera power state is. */
     private boolean powered = false;
+    /** Protocol version reported by the handshake, 0 when unknown (no handshake). */
+    private int protocolVersion = 0;
     /** Current camera configuration, null when not configured. */
-    private PictureMode configuredMode = null;
+    private CameraConfig configuration = null;
     /** The next picture is the first one after CONFIG and needs settling. */
     private boolean settlePending = false;
 
@@ -65,10 +68,11 @@ public class ArducamDevice {
         if (!EXPECTED_FIRMWARE.equals(status.firmware())) {
             throw new DeviceException("Unsupported device, firmware: " + status.firmware());
         }
-        if (!EXPECTED_PROTOCOL.equals(status.protocol())) {
+        if (!SUPPORTED_PROTOCOLS.contains(status.protocol())) {
             throw new DeviceException("Unsupported protocol version: " + status.protocol()
-                    + ", expected: " + EXPECTED_PROTOCOL);
+                    + ", expected one of: " + new java.util.TreeSet<>(SUPPORTED_PROTOCOLS));
         }
+        protocolVersion = Integer.parseInt(status.protocol());
         return status;
     }
 
@@ -85,13 +89,13 @@ public class ArducamDevice {
     }
 
     /** Current camera configuration, or null when not configured. */
-    public PictureMode configuredMode() {
-        return configuredMode;
+    public CameraConfig configuration() {
+        return configuration;
     }
 
     public void powerOn() throws IOException, DeviceException {
         // Powering on clears the camera configuration.
-        configuredMode = null;
+        configuration = null;
         // On ERR POWER SCCB the camera stays powered but is unusable, keep 'powered' false
         // so that the next camera command tries again (POWER on when on is not an error).
         executeOk("POWER on", POWER_ON_TIMEOUT);
@@ -100,7 +104,7 @@ public class ArducamDevice {
 
     public void powerOff() throws IOException, DeviceException {
         powered = false;
-        configuredMode = null;
+        configuration = null;
         executeOk("POWER off", POWER_OFF_TIMEOUT);
     }
 
@@ -109,41 +113,53 @@ public class ArducamDevice {
             return TestReport.from("Camera test", executeCameraCommand("CAMTEST", CAMTEST_TIMEOUT));
         } finally {
             // CAMTEST rewrites the registers.
-            configuredMode = null;
+            configuration = null;
         }
     }
 
     /** Writes the camera configuration; the next picture will wait for auto exposure to settle. */
-    public void configure(PictureMode mode) throws IOException, DeviceException {
+    public void configure(CameraConfig config) throws IOException, DeviceException {
+        if (config.needsProtocolV3() && protocolVersion != 0 && protocolVersion < 3) {
+            throw new DeviceException("The configuration needs protocol v3 (firmware 0.3.0+), device uses v"
+                    + protocolVersion + ": " + config.configCommand());
+        }
         if (!powered) {
             powerOn();
         }
 
         // On error the firmware clears the configuration.
-        configuredMode = null;
-        executeOk(mode.configCommand(), CONFIG_TIMEOUT);
-        configuredMode = mode;
+        configuration = null;
+        executeOk(config.configCommand(), CONFIG_TIMEOUT);
+        configuration = config;
         settlePending = true;
+    }
+
+    public void configure(PictureMode mode) throws IOException, DeviceException {
+        configure(mode.config());
+    }
+
+    public RawImage takePicture(PictureMode mode) throws IOException, DeviceException {
+        return takePicture(mode.config());
     }
 
     /**
      * Takes a picture, configuring the camera first when needed.
      * If the configuration or power was lost (e.g. the firmware was reset), restores it and retries once.
      */
-    public RawImage takePicture(PictureMode mode) throws IOException, DeviceException {
+    public RawImage takePicture(CameraConfig config) throws IOException, DeviceException {
         CommandResult result;
         try {
-            result = capture(mode);
+            result = capture(config);
         } catch (DeviceException e) {
             if ("POWER_OFF".equals(e.errorCode())) {
                 powered = false;
-                configuredMode = null;
+                configuration = null;
             } else if ("NOT_CONFIGURED".equals(e.errorCode())) {
-                configuredMode = null;
+                configuration = null;
             } else {
                 throw e;
             }
-            result = capture(mode);
+            result = capture(config);
         }
 
         DataBlock block = singleWholeImageBlock(result);
@@ -163,13 +179,13 @@ public class ArducamDevice {
         return new RawImage(block.width(), block.height(), block.format(), block.data());
     }
 
-    private CommandResult capture(PictureMode mode) throws IOException, DeviceException {
-        if (configuredMode != mode) {
-            configure(mode);
+    private CommandResult capture(CameraConfig config) throws IOException, DeviceException {
+        if (!config.equals(configuration)) {
+            configure(config);
         }
 
         boolean first = settlePending;
-        CommandResult result = executeOk(mode.pictureCommand(first), mode.pictureTimeout(first));
+        CommandResult result = executeOk(config.pictureCommand(first), config.pictureTimeout(first));
         settlePending = false;
         return result;
     }

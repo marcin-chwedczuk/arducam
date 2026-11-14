@@ -13,9 +13,20 @@ public final class ImageDecoder {
     public static RgbImage decode(RawImage raw) {
         return switch (raw.format()) {
             case YUYV -> decodeYuyv(raw.width(), raw.height(), raw.data());
+            case Y8 -> decodeY8(raw.width(), raw.height(), raw.data());
             case BAYER -> ColorCorrection.correctRawImage(
                     decodeBayerBggr(raw.width(), raw.height(), raw.data()));
         };
+    }
+
+    /** Grayscale, 1 byte/pixel. Like YUYV, gamma is already applied by the camera. */
+    public static RgbImage decodeY8(int width, int height, byte[] data) {
+        int[] pixels = new int[width * height];
+        for (int i = 0; i < pixels.length; i++) {
+            int y = data[i] & 0xff;
+            pixels[i] = (y << 16) | (y << 8) | y;
+        }
+        return new RgbImage(width, height, pixels);
     }
 
     /**

@@ -19,7 +19,7 @@ class FakeFirmware implements Function<String, byte[]> {
     int failPowerOn = 0;
     /** Number of next image transfers (PICTURE or READ) sent with a corrupted CRC. */
     int corruptCrc = 0;
-    String protocol = "2";
+    String protocol = "3";
 
     /** Simulates pressing the reset button. */
     void reset() {
@@ -65,13 +65,12 @@ class FakeFirmware implements Function<String, byte[]> {
 
     private byte[] configure(String cmd) {
         if (!powered) return text("ERR CONFIG POWER_OFF");
-        boolean bayer = cmd.contains("fmt=bayer");
         if (cmd.contains("res=qqvga")) { w = 160; h = 120; }
         else if (cmd.contains("res=vga")) { w = 640; h = 480; }
         else { w = 320; h = 240; }
-        fmt = bayer ? "BAYER" : "YUYV";
+        fmt = cmd.contains("fmt=bayer") ? "BAYER" : cmd.contains("fmt=y8") ? "Y8" : "YUYV";
         config = w + "x" + h + "/" + fmt;
-        int bytes = w * h * (bayer ? 1 : 2);
+        int bytes = w * h * (fmt.equals("YUYV") ? 2 : 1);
         return text(String.format("OK CONFIG w=%d h=%d fmt=%s bytes=%d", w, h, fmt, bytes));
     }
 
@@ -79,7 +78,7 @@ class FakeFirmware implements Function<String, byte[]> {
         if (!powered) return text("ERR PICTURE POWER_OFF");
         if (config == null) return text("ERR PICTURE NOT_CONFIGURED");
 
-        image = new byte[w * h * (fmt.equals("BAYER") ? 1 : 2)];
+        image = new byte[w * h * (fmt.equals("YUYV") ? 2 : 1)];
         for (int i = 0; i < image.length; i++) image[i] = (byte) (i * 7);
 
         String settle = cmd.contains("settle=") ? cmd.substring(cmd.indexOf("settle=") + 7) : null;

@@ -24,7 +24,7 @@ class ArducamDeviceTest {
         DeviceStatus status = device.handshake();
 
         assertThat(status.version()).isEqualTo("0.2.0");
-        assertThat(status.protocol()).isEqualTo("2");
+        assertThat(status.protocol()).isEqualTo("3");
     }
 
     @Test
@@ -34,6 +34,70 @@ class ArducamDeviceTest {
         assertThatThrownBy(device::handshake)
                 .isInstanceOf(DeviceException.class)
                 .hasMessageContaining("protocol version: 1");
+    }
+
+    @Test
+    void handshake_accepts_protocol_v2_and_v3() throws Exception {
+        firmware.protocol = "2";
+        assertThat(device.handshake().protocol()).isEqualTo("2");
+
+        firmware.protocol = "3";
+        assertThat(device.handshake().protocol()).isEqualTo("3");
+    }
+
+    @Test
+    void v3_options_are_refused_on_v2_device_without_sending_anything() throws Exception {
+        firmware.protocol = "2";
+        device.handshake();
+        int sent = arduino.receivedCommands().size();
+
+        var y8 = CameraConfig.of(PixelFormat.Y8, CameraConfig.Resolution.QQVGA);
+        assertThatThrownBy(() -> device.takePicture(y8))
+                .isInstanceOf(DeviceException.class)
+                .hasMessageContaining("protocol v3");
+        assertThat(arduino.receivedCommands()).hasSize(sent);
+
+        // Plain v2 configurations still work.
+        device.takePicture(PictureMode.QQVGA_YUYV);
+    }
+
+    @Test
+    void y8_picture_is_grayscale_one_byte_per_pixel() throws Exception {
+        device.handshake();
+        var config = CameraConfig.of(PixelFormat.Y8, CameraConfig.Resolution.QVGA);
+
+        RawImage image = device.takePicture(config);
+
+        assertThat(image.format()).isEqualTo(PixelFormat.Y8);
+        assertThat(image.data()).hasSize(320 * 240);
+        assertThat(arduino.receivedCommands()).containsSubsequence("CONFIG fmt=y8 res=qvga", "PICTURE settle=4000");
+    }
+
+    @Test
+    void changed_adjustment_reconfigures_same_adjustment_does_not() throws Exception {
+        device.handshake();
+        var base = CameraConfig.of(PixelFormat.YUYV, CameraConfig.Resolution.QQVGA);
+
+        device.takePicture(base.withBrightness(20));
+        device.takePicture(base.withBrightness(20));
+        device.takePicture(base.withBrightness(40));
+
+        assertThat(arduino.receivedCommands()).filteredOn(c -> c.startsWith("CONFIG")).containsExactly(
+                "CONFIG fmt=yuyv res=qqvga brightness=20",
+                "CONFIG fmt=yuyv res=qqvga brightness=40");
+    }
+
+    @Test
+    void manual_exposure_needs_no_settling() throws Exception {
+        device.handshake();
+        var manual = CameraConfig.of(PixelFormat.YUYV, CameraConfig.Resolution.QVGA)
+                .withAuto(false).withExposure(300).withGain(16);
+
+        device.takePicture(manual);
+
+        assertThat(arduino.receivedCommands()).containsSubsequence(
+                "CONFIG fmt=yuyv res=qvga auto=off exposure=300 gain=16", "PICTURE");
+        assertThat(arduino.receivedCommands()).noneMatch(c -> c.contains("settle"));
     }
 
     @Test
@@ -162,7 +226,7 @@ class ArducamDeviceTest {
                 "POWER on", "CONFIG fmt=yuyv res=qqvga", "PICTURE settle=2000",
                 "POWER off", "POWER on",
                 "CONFIG fmt=yuyv res=qqvga", "PICTURE settle=2000");
-        assertThat(device.configuredMode()).isEqualTo(PictureMode.QQVGA_YUYV);
+        assertThat(device.configuration()).isEqualTo(PictureMode.QQVGA_YUYV.config());
     }
 
     @Test
@@ -177,7 +241,7 @@ class ArducamDeviceTest {
                 .isInstanceOf(DeviceException.class)
                 .hasMessageContaining("NO_VSYNC");
         assertThat(d.isPowered()).isTrue();
-        assertThat(d.configuredMode()).isEqualTo(PictureMode.QVGA_YUYV);
+        assertThat(d.configuration()).isEqualTo(PictureMode.QVGA_YUYV.config());
     }
 
     @Test

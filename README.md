@@ -3,7 +3,7 @@
 JavaFX application that connects to an Arduino via a serial port and displays
 images captured by a simple camera module.
 
-The firmware is in `arduino/arducam` (0.2.0+), the serial protocol (v2) is described in
+The firmware is in `arduino/arducam` (0.2.0+), the serial protocol (v2 and v3) is described in
 [`arduino/PROTOCOL.md`](arduino/PROTOCOL.md). The application can:
 
 - take pictures: QQVGA 160×120 YUYV, QVGA 320×240 YUYV, VGA 640×480 raw Bayer

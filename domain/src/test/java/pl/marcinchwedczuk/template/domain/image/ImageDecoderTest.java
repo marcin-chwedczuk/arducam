@@ -8,6 +8,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ImageDecoderTest {
     @Test
+    void y8_is_grayscale_without_gamma() {
+        byte[] data = {0, 99, (byte) 255};
+
+        RgbImage img = ImageDecoder.decode(new RawImage(3, 1, PixelFormat.Y8, data));
+
+        assertThat(img.pixels()).containsExactly(0x000000, 0x636363, 0xffffff);
+    }
+
+    @Test
     void yuyv_neutral_chroma_gives_gray() {
         byte[] data = {(byte) 128, (byte) 128, (byte) 200, (byte) 128};
 
