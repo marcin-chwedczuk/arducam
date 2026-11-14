@@ -19,9 +19,18 @@ class CameraConfigTest {
         assertThat(PictureMode.VGA_BAYER.config().configCommand()).isEqualTo("CONFIG fmt=bayer res=vga");
         assertThat(PictureMode.COLOR_BARS.config().configCommand())
                 .isEqualTo("CONFIG fmt=yuyv res=qqvga pattern=bars auto=off");
-        for (PictureMode m : PictureMode.values()) {
+        for (PictureMode m : new PictureMode[] {
+                PictureMode.QQVGA_YUYV, PictureMode.QVGA_YUYV, PictureMode.VGA_BAYER, PictureMode.COLOR_BARS}) {
             assertThat(m.config().needsProtocolV3()).as(m.name()).isFalse();
         }
+    }
+
+    @Test
+    void black_and_white_presets_use_y8() {
+        assertThat(PictureMode.QQVGA_BW.config().configCommand()).isEqualTo("CONFIG fmt=y8 res=qqvga");
+        assertThat(PictureMode.QVGA_BW.config().configCommand()).isEqualTo("CONFIG fmt=y8 res=qvga");
+        assertThat(PictureMode.QQVGA_BW.config().needsProtocolV3()).isTrue();
+        assertThat(PictureMode.QVGA_BW.config().firstPictureSettleMs()).isEqualTo(4000);
     }
 
     @Test

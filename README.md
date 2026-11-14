@@ -6,8 +6,9 @@ images captured by a simple camera module.
 The firmware is in `arduino/arducam` (0.2.0+), the serial protocol (v2 and v3) is described in
 [`arduino/PROTOCOL.md`](arduino/PROTOCOL.md). The application can:
 
-- take pictures: QQVGA 160×120 YUYV, QVGA 320×240 YUYV, VGA 640×480 raw Bayer
-  and a QQVGA colour bar test pattern,
+- take pictures: QQVGA 160×120 YUYV, QVGA 320×240 YUYV, black and white
+  QQVGA/QVGA (grayscale Y8, half the transfer time, firmware 0.3.0+),
+  VGA 640×480 raw Bayer and a QQVGA colour bar test pattern,
 - take pictures continuously (Loop mode) until stopped, like a (slow) movie
   camera: the camera is configured once, so only the first frame waits for
   auto exposure to settle; the frame rate is limited by the transfer time

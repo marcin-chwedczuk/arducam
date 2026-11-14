@@ -74,6 +74,17 @@ class ArducamDeviceTest {
     }
 
     @Test
+    void black_and_white_preset_takes_grayscale_picture() throws Exception {
+        device.handshake();
+
+        RawImage image = device.takePicture(PictureMode.QQVGA_BW);
+
+        assertThat(image.format()).isEqualTo(PixelFormat.Y8);
+        assertThat(image.data()).hasSize(160 * 120);
+        assertThat(arduino.receivedCommands()).containsSubsequence("CONFIG fmt=y8 res=qqvga", "PICTURE settle=2000");
+    }
+
+    @Test
     void changed_adjustment_reconfigures_same_adjustment_does_not() throws Exception {
         device.handshake();
         var base = CameraConfig.of(PixelFormat.YUYV, CameraConfig.Resolution.QQVGA);
