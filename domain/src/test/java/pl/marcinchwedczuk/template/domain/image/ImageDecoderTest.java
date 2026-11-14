@@ -1,0 +1,58 @@
+package pl.marcinchwedczuk.template.domain.image;
+
+import org.junit.jupiter.api.Test;
+import pl.marcinchwedczuk.template.domain.protocol.PixelFormat;
+import pl.marcinchwedczuk.template.domain.protocol.RawImage;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ImageDecoderTest {
+    @Test
+    void yuyv_neutral_chroma_gives_gray() {
+        byte[] data = {(byte) 128, (byte) 128, (byte) 200, (byte) 128};
+
+        RgbImage img = ImageDecoder.decode(new RawImage(2, 1, PixelFormat.YUYV, data));
+
+        assertThat(img.rgb(0, 0)).isEqualTo(0x808080);
+        assertThat(img.rgb(1, 0)).isEqualTo(0xc8c8c8);
+    }
+
+    @Test
+    void yuyv_high_v_gives_red() {
+        // Y=76 U=85 V=255 is roughly pure red in BT.601 full range
+        byte[] data = {76, 85, 76, (byte) 255};
+
+        int rgb = ImageDecoder.decode(new RawImage(2, 1, PixelFormat.YUYV, data)).rgb(0, 0);
+
+        assertThat((rgb >> 16) & 0xff).isGreaterThan(240);
+        assertThat((rgb >> 8) & 0xff).isLessThan(20);
+        assertThat(rgb & 0xff).isLessThan(20);
+    }
+
+    @Test
+    void bayer_uniform_gives_uniform_gray() {
+        byte[] data = new byte[4 * 4];
+        java.util.Arrays.fill(data, (byte) 99);
+
+        RgbImage img = ImageDecoder.decode(new RawImage(4, 4, PixelFormat.BAYER, data));
+
+        for (int y = 0; y < 4; y++)
+            for (int x = 0; x < 4; x++)
+                assertThat(img.rgb(x, y)).isEqualTo(0x636363);
+    }
+
+    @Test
+    void bayer_bggr_channels_are_assigned_correctly() {
+        // Only blue sites lit: even rows, even columns.
+        int w = 4, h = 4;
+        byte[] data = new byte[w * h];
+        for (int y = 0; y < h; y += 2)
+            for (int x = 0; x < w; x += 2)
+                data[y * w + x] = (byte) 200;
+
+        RgbImage img = ImageDecoder.decode(new RawImage(w, h, PixelFormat.BAYER, data));
+
+        assertThat(img.rgb(0, 0)).isEqualTo(200);   // B only
+        assertThat(img.rgb(1, 1)).isEqualTo(200);   // R site, B interpolated from diagonals
+    }
+}

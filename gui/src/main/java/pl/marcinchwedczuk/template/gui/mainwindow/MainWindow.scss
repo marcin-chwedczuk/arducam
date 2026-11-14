@@ -13,3 +13,22 @@
         -fx-background-color: black;
     }
 }
+
+.picture-pane {
+    -fx-background-color: #2b2b2b;
+}
+
+.no-picture-label {
+    -fx-text-fill: #888888;
+    -fx-font-size: 1.5em;
+}
+
+.rotate-button {
+    -fx-font-size: 1.3em;
+    -fx-font-weight: bold;
+    -fx-padding: 0 8 0 8;
+}
+
+.status-bar {
+    -fx-border-color: #c8c8c8 transparent transparent transparent;
+}

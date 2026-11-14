@@ -1,11 +1,12 @@
 package pl.marcinchwedczuk.template.gui.mainwindow;
 
 import com.fazecast.jSerialComm.SerialPort;
-import com.fazecast.jSerialComm.SerialPortEvent;
-import com.fazecast.jSerialComm.SerialPortMessageListener;
 import javafx.application.Platform;
+import pl.marcinchwedczuk.template.domain.protocol.ArducamClient;
+import pl.marcinchwedczuk.template.domain.protocol.ArducamDevice;
+import pl.marcinchwedczuk.template.domain.protocol.DeviceStatus;
+import pl.marcinchwedczuk.template.domain.protocol.ProtocolListener;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -13,7 +14,16 @@ import java.util.function.Consumer;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * Executes serial port operations, one at a time, on a dedicated worker thread.
+ * Results are delivered on the JavaFX Application Thread.
+ */
 public class SerialInterface {
+    public static final int BAUD_RATE = 250_000;
+    /** Short read timeout, the protocol client checks its own deadlines between reads. */
+    private static final int READ_TIMEOUT_MS = 100;
+    private static final int WRITE_TIMEOUT_MS = 2000;
+
     private final Thread workerThread = new Thread(this::work, "serial-port-thread");
     private final ConcurrentLinkedQueue<Message<?>> messageQueue = new ConcurrentLinkedQueue<>();
 
@@ -55,7 +65,7 @@ public class SerialInterface {
         private Consumer<Exception> onFailure = p -> { };
         private Runnable atExit = () -> { };
 
-        abstract R innerExecute(SerialPortLogger logger);
+        abstract R innerExecute(SerialPortLogger logger) throws Exception;
 
         void execute(SerialPortLogger logger) {
             R result;
@@ -90,13 +100,6 @@ public class SerialInterface {
             this.atExit = requireNonNull(atExit);
             return this;
         }
-
-        protected void sleep(long millis) {
-            try { Thread.sleep(millis); }
-            catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
     }
 
     public static class GetSerialPorts extends Message<List<SerialPort>> {
@@ -106,37 +109,55 @@ public class SerialInterface {
 
             logger.logEvent("Discovered serial ports:");
             for (SerialPort p : ports) {
-                logger.logEvent(String.format("- %s, baud rate: %s, path: %s", p.getManufacturer(), p.getBaudRate(), p.getSystemPortPath()));
+                logger.logEvent(String.format("- %s, path: %s", p.getManufacturer(), p.getSystemPortPath()));
             }
 
             return Arrays.asList(ports);
         }
     }
 
-    public static class OpenSerialPort extends Message<SerialPort> {
-        private static final int TIMEOUT = 15000;
-        private final SerialPort port;
+    public record Connection(SerialPort port, ArducamDevice device, DeviceStatus status) { }
 
-        public OpenSerialPort(SerialPort port) {
+    /**
+     * Opens the port and performs the protocol handshake.
+     * The Arduino is connected through an external USB-serial module, so opening
+     * the port does not reset it and there is no need to wait for a boot.
+     */
+    public static class OpenSerialPort extends Message<Connection> {
+        private final SerialPort port;
+        private final ProtocolListener protocolListener;
+
+        public OpenSerialPort(SerialPort port, ProtocolListener protocolListener) {
             this.port = requireNonNull(port);
+            this.protocolListener = requireNonNull(protocolListener);
         }
 
         @Override
-        SerialPort innerExecute(SerialPortLogger logger) {
-            if (port.openPort()) {
-                port.setComPortTimeouts(SerialPort.TIMEOUT_READ_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING, TIMEOUT, TIMEOUT);
-                port.setComPortParameters(9600, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY);
-                port.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED);
+        Connection innerExecute(SerialPortLogger logger) throws Exception {
+            port.setComPortParameters(BAUD_RATE, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY);
+            port.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED);
+            port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING,
+                    READ_TIMEOUT_MS, WRITE_TIMEOUT_MS);
 
-                logger.logEvent("Port open.");
-
-                // Opening the port resets Arduino, we need to give it some time to initialize
-                sleep(2000);
-
-                return port;
+            if (!port.openPort()) {
+                throw new RuntimeException("Opening port failed. Make sure that the port is not used by other apps, including Arduino IDE Serial Monitor.");
             }
+            logger.logEvent(String.format("Port open, %d baud.", BAUD_RATE));
 
-            throw new RuntimeException("Opening port failed. Make sure that the port is not used by other apps, including Arduino IDE Serial Monitor.");
+            try {
+                port.flushIOBuffers();
+
+                ArducamClient client = new ArducamClient(port.getInputStream(), port.getOutputStream());
+                client.setListener(protocolListener);
+                ArducamDevice device = new ArducamDevice(client);
+
+                DeviceStatus status = device.handshake();
+                return new Connection(port, device, status);
+            } catch (Exception e) {
+                port.closePort();
+                logger.logEvent("Port closed.");
+                throw e;
+            }
         }
     }
 
@@ -150,104 +171,29 @@ public class SerialInterface {
         @Override
         SerialPort innerExecute(SerialPortLogger logger) {
             logger.logEvent("Closing port.");
-            port.removeDataListener();
             port.closePort();
             return port;
         }
     }
 
-    /**
-     * Registers a listener that reports every line (terminated by '\n') received from the port.
-     * Lines are delivered on the jSerialComm event thread, without line endings.
-     */
-    public static class StartListening extends Message<SerialPort> {
-        private final SerialPort port;
-        private final Runnable onPortDisconnected;
-
-        public StartListening(SerialPort port, Runnable onPortDisconnected) {
-            this.port = requireNonNull(port);
-            this.onPortDisconnected = requireNonNull(onPortDisconnected);
-        }
-
-        @Override
-        SerialPort innerExecute(SerialPortLogger logger) {
-            boolean added = port.addDataListener(new SerialPortMessageListener() {
-                @Override
-                public int getListeningEvents() {
-                    return SerialPort.LISTENING_EVENT_DATA_RECEIVED | SerialPort.LISTENING_EVENT_PORT_DISCONNECTED;
-                }
-
-                @Override
-                public byte[] getMessageDelimiter() {
-                    return new byte[] { '\n' };
-                }
-
-                @Override
-                public boolean delimiterIndicatesEndOfMessage() {
-                    return true;
-                }
-
-                @Override
-                public void serialEvent(SerialPortEvent event) {
-                    if (event.getEventType() == SerialPort.LISTENING_EVENT_PORT_DISCONNECTED) {
-                        logger.logEvent("Port disconnected.");
-                        Platform.runLater(onPortDisconnected);
-                        return;
-                    }
-
-                    String line = new String(event.getReceivedData(), StandardCharsets.US_ASCII)
-                            .replace("\r", "")
-                            .replace("\n", "");
-                    logger.logRecv(line);
-                }
-            });
-
-            if (!added) throw new RuntimeException("Cannot register serial port listener.");
-
-            logger.logEvent("Listening for messages.");
-            return port;
-        }
+    @FunctionalInterface
+    public interface DeviceAction<R> {
+        R run(ArducamDevice device) throws Exception;
     }
 
-    public static class SendCommand extends Message<String> {
-        private final SerialPort port;
-        private final String message;
+    /** Runs an operation on an already connected device. */
+    public static class RunOnDevice<R> extends Message<R> {
+        private final ArducamDevice device;
+        private final DeviceAction<R> action;
 
-        public SendCommand(SerialPort port, String message) {
-            this.port = port;
-            this.message = message;
+        public RunOnDevice(ArducamDevice device, DeviceAction<R> action) {
+            this.device = requireNonNull(device);
+            this.action = requireNonNull(action);
         }
 
         @Override
-        String innerExecute(SerialPortLogger logger) {
-            String msg = message;
-            if (!msg.endsWith("\n")) {
-                msg += "\n";
-            }
-
-            logger.logSent(message);
-            byte[] bytes = msg.getBytes(StandardCharsets.US_ASCII);
-            int result = port.writeBytes(bytes, bytes.length);
-            if (result == -1) throw new RuntimeException("Write to serial port failed.");
-
-            port.flushIOBuffers();
-
-            StringBuilder sb = new StringBuilder();
-            byte[] singleChar = new byte[1];
-            do {
-                if (port.readBytes(singleChar, 1) != 1) {
-                    throw new RuntimeException("Reading from serial port failed.");
-                }
-
-                // Do not include line endings
-                if (singleChar[0] != '\r' && singleChar[0] != '\n') {
-                    sb.append((char) singleChar[0]);
-                }
-            } while (singleChar[0] != '\n');
-
-            logger.logRecv(sb.toString());
-
-            return sb.toString();
+        R innerExecute(SerialPortLogger logger) throws Exception {
+            return action.run(device);
         }
     }
 }

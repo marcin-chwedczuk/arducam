@@ -1,71 +1,117 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
-<?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.VBox?>
-<?import javafx.scene.image.ImageView?>
 <?import javafx.scene.image.Image?>
-<?import javafx.scene.layout.Pane?>
-<BorderPane minHeight="600" minWidth="900"
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+<BorderPane minHeight="600" minWidth="1100" prefHeight="720" prefWidth="1280"
             styleClass="mainWindow" stylesheets="@MainWindow.css"
             xmlns="http://javafx.com/javafx/" xmlns:fx="http://javafx.com/fxml/"
             fx:controller="pl.marcinchwedczuk.template.gui.mainwindow.MainWindow"
             fx:id="mainWindow">
     <top>
-        <VBox>
-            <ToolBar>
-                <Label>Serial port:</Label>
-                <ComboBox fx:id="serialPortComboBox" />
-                <Button fx:id="refreshSerialPortsButton" onAction="#refreshSerialPorts">
-                    <graphic>
-                        <ImageView fitHeight="16" fitWidth="16">
-                            <Image url="@view-refresh.png" />
-                        </ImageView>
-                    </graphic>
-                </Button>
+        <ToolBar>
+            <Label>Port:</Label>
+            <ComboBox fx:id="serialPortComboBox" prefWidth="220" />
+            <Button fx:id="refreshSerialPortsButton" onAction="#refreshSerialPorts">
+                <tooltip><Tooltip text="Refresh serial ports" /></tooltip>
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@view-refresh.png" />
+                    </ImageView>
+                </graphic>
+            </Button>
+            <Button fx:id="connectButton" onAction="#connect">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@emblem-default.png" />
+                    </ImageView>
+                </graphic>
+                Connect
+            </Button>
+            <Button fx:id="disconnectButton" onAction="#disconnect">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@process-stop.png" />
+                    </ImageView>
+                </graphic>
+                Disconnect
+            </Button>
 
-                <Separator orientation="VERTICAL" />
-                <Button fx:id="connectButton" onAction="#connect">
-                    <graphic>
-                        <ImageView fitHeight="16" fitWidth="16">
-                            <Image url="@camera-video.png" />
-                        </ImageView>
-                    </graphic>
-                    Connect
-                </Button>
-                <Button fx:id="disconnectButton" onAction="#disconnect">
-                    <graphic>
-                        <ImageView fitHeight="16" fitWidth="16">
-                            <Image url="@process-stop.png" />
-                        </ImageView>
-                    </graphic>
-                    Disconnect
-                </Button>
+            <Separator orientation="VERTICAL" />
+            <Label>Mode:</Label>
+            <ComboBox fx:id="pictureModeComboBox" />
+            <Button fx:id="takePictureButton" onAction="#takePicture" defaultButton="true">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@camera-video.png" />
+                    </ImageView>
+                </graphic>
+                Take picture
+            </Button>
 
-                <Separator orientation="VERTICAL" />
-                <Button fx:id="exitButton" onAction="#closeApp">
-                    <graphic>
-                        <ImageView fitHeight="16" fitWidth="16">
-                            <Image url="@system-restart.png" />
-                        </ImageView>
-                    </graphic>
-                    Exit
-                </Button>
-            </ToolBar>
-        </VBox>
+            <Separator orientation="VERTICAL" />
+            <Button fx:id="memoryTestButton" onAction="#memoryTest">
+                <tooltip><Tooltip text="Test the address counter and SRAM read path (MEMTEST)" /></tooltip>
+                Memory test
+            </Button>
+            <Button fx:id="cameraTestButton" onAction="#cameraTest">
+                <tooltip><Tooltip text="Test SCCB, registers, timing and colour bars (CAMTEST)" /></tooltip>
+                Camera test
+            </Button>
+
+            <Separator orientation="VERTICAL" />
+            <Button fx:id="rotateCcwButton" onAction="#rotateCounterClockwise" styleClass="rotate-button">
+                <tooltip><Tooltip text="Rotate 90° counter-clockwise" /></tooltip>
+                ↺
+            </Button>
+            <Button fx:id="rotateCwButton" onAction="#rotateClockwise" styleClass="rotate-button">
+                <tooltip><Tooltip text="Rotate 90° clockwise" /></tooltip>
+                ↻
+            </Button>
+            <Button fx:id="saveButton" onAction="#savePicture">
+                <tooltip><Tooltip text="Save picture as PNG or BMP" /></tooltip>
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@document-save.png" />
+                    </ImageView>
+                </graphic>
+                Save…
+            </Button>
+
+            <Separator orientation="VERTICAL" />
+            <Button fx:id="exitButton" onAction="#closeApp">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <Image url="@system-restart.png" />
+                    </ImageView>
+                </graphic>
+                Exit
+            </Button>
+        </ToolBar>
     </top>
 
     <center>
-        <TextArea editable="false" fx:id="logTextArea" styleClass="log-window" />
+        <SplitPane dividerPositions="0.6">
+            <StackPane fx:id="picturePane" styleClass="picture-pane" minWidth="0" minHeight="0">
+                <Label fx:id="noPictureLabel" styleClass="no-picture-label" text="No picture yet" />
+                <ImageView fx:id="pictureView" preserveRatio="true" smooth="false" />
+            </StackPane>
+            <TextArea editable="false" fx:id="logTextArea" styleClass="log-window" />
+        </SplitPane>
     </center>
 
     <bottom>
-        <HBox>
-            <Pane minWidth="20" />
+        <HBox styleClass="status-bar" spacing="8" alignment="CENTER_LEFT">
+            <padding><Insets top="2" right="8" bottom="2" left="8" /></padding>
+            <Label fx:id="deviceInfoLabel" />
             <Separator orientation="VERTICAL" />
-            <Label>Ready</Label>
-            <Separator orientation="VERTICAL" />
+            <Label fx:id="pictureInfoLabel" />
+            <Pane HBox.hgrow="ALWAYS" />
+            <Label fx:id="activityLabel" />
+            <Label fx:id="transferLabel" />
+            <ProgressBar fx:id="transferProgressBar" prefWidth="200" />
         </HBox>
     </bottom>
 </BorderPane>
