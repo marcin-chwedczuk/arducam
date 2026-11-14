@@ -65,7 +65,7 @@ public record CameraConfig(PixelFormat format, Resolution resolution, boolean pa
     }
 
     /** Firmware limit for a command line, PROTOCOL.md section 3. */
-    public static final int MAX_COMMAND_LENGTH = 127;
+    public static final int MAX_COMMAND_LENGTH = 159;
 
     /** Auto exposure needs about 5 frames to converge after {@code CONFIG}. */
     private static final int SETTLE_FRAMES = 5;
@@ -152,22 +152,13 @@ public record CameraConfig(PixelFormat format, Resolution resolution, boolean pa
     }
 
     /**
-     * The {@code CONFIG} command. Adjustments are sent only when set. {@code fmt} and {@code res}
-     * are always sent (readable logs), except that {@code fmt=yuyv} (the firmware default) is
-     * dropped when the command would not fit in {@link #MAX_COMMAND_LENGTH} characters
-     * (only possible with the pattern and all adjustments set).
+     * The {@code CONFIG} command. Adjustments are sent only when set. The longest possible
+     * command is 131 characters, within {@link #MAX_COMMAND_LENGTH}.
      */
     public String configCommand() {
-        String full = configCommand(true);
-        return full.length() <= MAX_COMMAND_LENGTH || format != PixelFormat.YUYV
-                ? full
-                : configCommand(false);
-    }
-
-    private String configCommand(boolean explicitFormat) {
         List<String> args = new ArrayList<>();
         args.add("CONFIG");
-        if (explicitFormat) args.add("fmt=" + format.configValue());
+        args.add("fmt=" + format.configValue());
         args.add("res=" + resolution.configValue());
         if (pattern) args.add("pattern=bars");
         if (!auto) args.add("auto=off");

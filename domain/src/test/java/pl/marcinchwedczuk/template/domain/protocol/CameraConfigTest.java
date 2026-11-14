@@ -40,14 +40,12 @@ class CameraConfigTest {
                 .withBrightness(-127).withContrast(255).withSaturation(255)
                 .withExposure(65535).withGain(255);
 
-        // 131 chars with fmt=yuyv, the default format is dropped to fit.
+        // PROTOCOL.md section 3: the longest valid command is 131 characters.
         assertThat(config.configCommand())
-                .hasSizeLessThanOrEqualTo(CameraConfig.MAX_COMMAND_LENGTH)
-                .startsWith("CONFIG res=qqvga pattern=bars")
-                .doesNotContain("fmt=");
-
-        // Shorter commands keep the explicit format.
-        assertThat(config.withPattern(false).configCommand()).startsWith("CONFIG fmt=yuyv res=qqvga");
+                .isEqualTo("CONFIG fmt=yuyv res=qqvga pattern=bars auto=off effect=negative brightness=-127"
+                        + " contrast=255 saturation=255 exposure=65535 gain=255")
+                .hasSize(131)
+                .hasSizeLessThanOrEqualTo(CameraConfig.MAX_COMMAND_LENGTH);
     }
 
     @Test
