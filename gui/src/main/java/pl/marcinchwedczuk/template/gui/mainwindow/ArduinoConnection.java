@@ -44,6 +44,9 @@ public class ArduinoConnection {
 
     public final BooleanProperty isConnected = new SimpleBooleanProperty(this, "isConnected", false);
     public final BooleanProperty isBusy = new SimpleBooleanProperty(this, "isBusy", false);
+    /** Continuous mode: pictures are taken one after another until {@link #stopLoop()}. */
+    public final BooleanProperty isLooping = new SimpleBooleanProperty(this, "isLooping", false);
+    private volatile boolean stopLoopRequested = false;
 
     /** What the device is doing, e.g. "Taking picture...". Empty when idle. */
     public final StringProperty activity = new SimpleStringProperty(this, "activity", "");
@@ -137,6 +140,45 @@ public class ArduinoConnection {
         }, onPicture);
     }
 
+    /**
+     * Continuous mode: takes pictures one after another, like a (very slow) movie camera,
+     * until {@link #stopLoop()} is called or an error occurs. The camera is configured once,
+     * so only the first frame waits for auto exposure to settle.
+     */
+    public void startLoopAsync(PictureMode mode, Consumer<Picture> onFrame) {
+        if (connection == null || isBusy.get()) return;
+
+        stopLoopRequested = false;
+        runOnDevice("Loop: starting...", device -> {
+            int frames = 0;
+            while (!stopLoopRequested) {
+                long start = System.nanoTime();
+                RawImage raw = device.takePicture(mode);
+                Picture picture = new Picture(raw, ImageDecoder.decode(raw));
+
+                frames++;
+                int frame = frames;
+                double seconds = (System.nanoTime() - start) / 1e9;
+                Platform.runLater(() -> {
+                    onFrame.accept(picture);
+                    if (!stopLoopRequested) {
+                        activity.set(String.format("Loop: frame %d (%.1f s)", frame, seconds));
+                    }
+                });
+            }
+            return frames;
+        }, frames -> { });
+        isLooping.set(true);
+    }
+
+    /** Stops continuous mode after the current frame (the protocol has no abort command). */
+    public void stopLoop() {
+        if (!isLooping.get()) return;
+
+        stopLoopRequested = true;
+        activity.set("Loop: stopping after the current frame...");
+    }
+
     public void memoryTestAsync(Consumer<TestReport> onReport) {
         runOnDevice("Running memory test...", device -> device.memoryTest(), onReport);
     }
@@ -169,6 +211,7 @@ public class ArduinoConnection {
 
     private void endActivity() {
         isBusy.set(false);
+        isLooping.set(false);
         activity.set("");
         transferProgress.set(-1);
         transferText.set("");

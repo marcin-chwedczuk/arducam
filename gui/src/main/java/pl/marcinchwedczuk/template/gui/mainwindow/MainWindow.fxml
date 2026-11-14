@@ -13,7 +13,7 @@
     <top>
         <ToolBar>
             <Label>Port:</Label>
-            <ComboBox fx:id="serialPortComboBox" prefWidth="220" />
+            <ComboBox fx:id="serialPortComboBox" prefWidth="170" />
             <Button fx:id="refreshSerialPortsButton" onAction="#refreshSerialPorts">
                 <tooltip><Tooltip text="Refresh serial ports" /></tooltip>
                 <graphic>
@@ -42,9 +42,12 @@
             <Separator orientation="VERTICAL" />
             <Label>Mode:</Label>
             <ComboBox fx:id="pictureModeComboBox" />
+            <ToggleButton fx:id="loopToggleButton" styleClass="loop-toggle" text="Single">
+                <tooltip><Tooltip text="Single: take one picture. Loop: take pictures continuously until stopped." /></tooltip>
+            </ToggleButton>
             <Button fx:id="takePictureButton" onAction="#takePicture" defaultButton="true">
                 <graphic>
-                    <ImageView fitHeight="16" fitWidth="16">
+                    <ImageView fx:id="takePictureIcon" fitHeight="16" fitWidth="16">
                         <Image url="@camera-video.png" />
                     </ImageView>
                 </graphic>

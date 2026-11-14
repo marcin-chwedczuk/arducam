@@ -11,6 +11,7 @@ import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.BorderPane;
@@ -63,7 +64,9 @@ public class MainWindow implements Initializable {
     @FXML private Button disconnectButton;
 
     @FXML private ComboBox<PictureMode> pictureModeComboBox;
+    @FXML private ToggleButton loopToggleButton;
     @FXML private Button takePictureButton;
+    @FXML private ImageView takePictureIcon;
     @FXML private Button memoryTestButton;
     @FXML private Button cameraTestButton;
 
@@ -104,7 +107,9 @@ public class MainWindow implements Initializable {
         disconnectButton.disableProperty().bind(cannotRunCommand);
 
         pictureModeComboBox.disableProperty().bind(cannotRunCommand);
-        takePictureButton.disableProperty().bind(cannotRunCommand);
+        loopToggleButton.disableProperty().bind(cannotRunCommand);
+        // While looping the button is "Stop".
+        takePictureButton.disableProperty().bind(cannotRunCommand.and(arduinoConnection.isLooping.not()));
         memoryTestButton.disableProperty().bind(cannotRunCommand);
         cameraTestButton.disableProperty().bind(cannotRunCommand);
 
@@ -116,6 +121,15 @@ public class MainWindow implements Initializable {
                 FXCollections.observableArrayList(
                     l.stream().map(SerialPortItem::new).toList())));
         arduinoConnection.serialPort.bind(serialPortComboBox.getSelectionModel().selectedItemProperty().map(SerialPortItem::serialPort));
+
+        loopToggleButton.textProperty().bind(
+                loopToggleButton.selectedProperty().map(loop -> loop ? "Loop" : "Single"));
+        Image takePictureImage = takePictureIcon.getImage();
+        Image stopImage = new Image(MainWindow.class.getResource("process-stop.png").toExternalForm());
+        arduinoConnection.isLooping.addListener((obs, was, looping) -> {
+            takePictureButton.setText(looping ? "Stop" : "Take picture");
+            takePictureIcon.setImage(looping ? stopImage : takePictureImage);
+        });
 
         pictureModeComboBox.setItems(FXCollections.observableArrayList(PictureMode.values()));
         pictureModeComboBox.getSelectionModel().select(PictureMode.QVGA_YUYV);
@@ -131,10 +145,22 @@ public class MainWindow implements Initializable {
         transferProgressBar.progressProperty().bind(arduinoConnection.transferProgress);
         transferProgressBar.visibleProperty().bind(arduinoConnection.isBusy);
 
-        arduinoConnection.setLogListener(line -> logTextArea.appendText(line + System.lineSeparator()));
+        arduinoConnection.setLogListener(this::appendLog);
         arduinoConnection.setErrorListener(ex -> UiService.errorDialog("Error: " + ex.getMessage()));
 
         arduinoConnection.discoverSerialPortsAsync();
+    }
+
+    /** Loop mode logs every frame, keep the log from growing without bounds. */
+    private static final int MAX_LOG_CHARS = 2_000_000;
+
+    private void appendLog(String line) {
+        if (logTextArea.getLength() > MAX_LOG_CHARS) {
+            String text = logTextArea.getText();
+            int cut = text.indexOf('\n', text.length() / 2);
+            logTextArea.deleteText(0, cut < 0 ? text.length() / 2 : cut + 1);
+        }
+        logTextArea.appendText(line + System.lineSeparator());
     }
 
     public void refreshSerialPorts(ActionEvent event) {
@@ -150,13 +176,24 @@ public class MainWindow implements Initializable {
     }
 
     public void takePicture(ActionEvent event) {
+        if (arduinoConnection.isLooping.get()) {
+            arduinoConnection.stopLoop();
+            return;
+        }
+
         PictureMode mode = pictureModeComboBox.getValue();
         if (mode == null) return;
 
-        arduinoConnection.takePictureAsync(mode, p -> {
-            picture.set(p);
-            showPicture();
-        });
+        if (loopToggleButton.isSelected()) {
+            arduinoConnection.startLoopAsync(mode, this::onPicture);
+        } else {
+            arduinoConnection.takePictureAsync(mode, this::onPicture);
+        }
+    }
+
+    private void onPicture(Picture p) {
+        picture.set(p);
+        showPicture();
     }
 
     public void memoryTest(ActionEvent event) {

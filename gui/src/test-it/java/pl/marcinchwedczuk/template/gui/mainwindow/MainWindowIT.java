@@ -42,6 +42,9 @@ public class MainWindowIT {
         assertThat(robot.lookup("#takePictureButton").queryButton())
                 .hasText("Take picture")
                 .isDisabled();
+        assertThat(robot.lookup("#loopToggleButton").queryAs(javafx.scene.control.ToggleButton.class))
+                .hasText("Single")
+                .isDisabled();
         assertThat(robot.lookup("#memoryTestButton").queryButton()).isDisabled();
         assertThat(robot.lookup("#cameraTestButton").queryButton()).isDisabled();
 
