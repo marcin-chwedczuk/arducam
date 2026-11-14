@@ -14,8 +14,8 @@
 #include <util/crc16.h>
 #include "ov7670.h"
 
-#define FW_VERSION     "0.1.0"
-#define PROTO_VERSION  1
+#define FW_VERSION     "0.3.0"
+#define PROTO_VERSION  3
 #define BAUD           250000
 
 // ---------------------------------------------------------------------------
@@ -50,8 +50,8 @@
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-#define CMD_MAX          63     // max command line length (protocol)
-#define MAX_TOKENS       8      // verb + up to 7 arguments
+#define CMD_MAX          159    // max command line length (protocol)
+#define MAX_TOKENS       12     // verb + up to 11 arguments
 #define SETTLE_MAX_MS    10000
 #define MAX_PCLK_KHZ     1100   // CAMTEST timing: above this -> FAIL
 #define TIMING_FRAMES    5
@@ -87,8 +87,12 @@ struct BarsCheck {
 // ---------------------------------------------------------------------------
 static bool     g_power;               // camera powered (PWDN low)
 static uint8_t  g_cam = CAM_UNKNOWN;
+static bool     g_configured;          // CONFIG done since power-up/reset
+static uint8_t  g_cfgMode;             // its OV7670_MODE_*
+static bool     g_cfgY8;               // send Y bytes only (fmt=y8)
 static bool     g_imgValid;            // SRAM holds a complete image
 static uint8_t  g_imgMode;             // its OV7670_MODE_*
+static bool     g_imgY8;               // it is sent as Y8
 static uint32_t g_addr;                // current counter address (SEND)
 
 static char     g_cmd[CMD_MAX + 1];
@@ -162,8 +166,14 @@ static void testBegin(const __FlashStringHelper *name, uint8_t result) {
                                 : result == T_WARN ? F(" WARN") : F(" FAIL"));
 }
 
-static const __FlashStringHelper *fmtName(uint8_t mode) {
-  return mode == OV7670_MODE_VGA_BAYER ? F("BAYER") : F("YUYV");
+// Format as sent to the host. Y8 = the Y bytes of a YUYV capture.
+static const __FlashStringHelper *fmtName(uint8_t mode, bool y8) {
+  return mode == OV7670_MODE_VGA_BAYER ? F("BAYER") : y8 ? F("Y8") : F("YUYV");
+}
+
+// Bytes sent for a whole image.
+static uint32_t imageBytes(uint8_t mode, bool y8) {
+  return OV7670_MODE_BYTES(mode) / (y8 ? 2 : 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,9 +358,10 @@ static uint8_t countBarEdges(const uint8_t *line) {
   return edges;
 }
 
-// Reads len bytes of the stored image starting at offset. If send, emits a
-// DATA block (header, raw bytes, END crc16). If chk != NULL, feeds every
-// byte to the colour-bar check (offset must be 0, TEST_MODE image).
+// Reads len bytes of the stored image starting at offset (both in sent
+// bytes; for Y8 only every second SRAM byte, the Y, is sent). If send, emits
+// a DATA block (header, raw bytes, END crc16). If chk != NULL, feeds every
+// byte to the colour-bar check (offset must be 0, TEST_MODE YUYV image).
 static void streamImage(uint32_t offset, uint32_t len, bool send,
                         BarsCheck *chk) {
   if (send) {
@@ -359,17 +370,20 @@ static void streamImage(uint32_t offset, uint32_t len, bool send,
     kvU32(F("offset"), offset);
     kvU32(F("w"), OV7670_MODE_WIDTH(g_imgMode));
     kvU32(F("h"), OV7670_MODE_HEIGHT(g_imgMode));
-    kvStr(F("fmt"), fmtName(g_imgMode));
+    kvStr(F("fmt"), fmtName(g_imgMode, g_imgY8));
     nl();
   }
+  const uint8_t stride = g_imgY8 ? 2 : 1;   // Y0 U0 Y1 V0: Y at even addresses
   MODE_SEND();
   counterClear();
-  counterSeek(offset);
+  counterSeek(offset * stride);
   uint16_t crc = 0;
   for (uint32_t i = 0; i < len; i++) {
     if (i != 0) {
-      aclkPulse();
-      g_addr++;
+      for (uint8_t k = 0; k < stride; k++) {
+        aclkPulse();
+      }
+      g_addr += stride;
     }
     uint8_t b = srReadByte();
     if (chk != NULL) {
@@ -412,6 +426,16 @@ static bool parseU32(const char *s, uint32_t *out) {
   return *end == '\0';
 }
 
+// Signed decimal, whole string.
+static bool parseI32(const char *s, int32_t *out) {
+  if (*s == '\0') {
+    return false;
+  }
+  char *end;
+  *out = strtol(s, &end, 10);
+  return *end == '\0';
+}
+
 // ---------------------------------------------------------------------------
 // Commands. tok[0] is the verb, tok[1..n-1] the arguments (all upper case).
 // ---------------------------------------------------------------------------
@@ -428,13 +452,23 @@ static void cmdStatus(uint8_t n) {
   kvStr(F("power"), g_power ? F("on") : F("off"));
   kvStr(F("cam"), g_cam == CAM_OK ? F("ok")
                   : g_cam == CAM_FAIL ? F("fail") : F("unknown"));
+  Serial.print(F(" config="));
+  if (g_configured) {
+    Serial.print(OV7670_MODE_WIDTH(g_cfgMode));
+    Serial.write('x');
+    Serial.print(OV7670_MODE_HEIGHT(g_cfgMode));
+    Serial.write('/');
+    Serial.print(fmtName(g_cfgMode, g_cfgY8));
+  } else {
+    Serial.print(F("none"));
+  }
   Serial.print(F(" image="));
   if (g_imgValid) {
     Serial.print(OV7670_MODE_WIDTH(g_imgMode));
     Serial.write('x');
     Serial.print(OV7670_MODE_HEIGHT(g_imgMode));
     Serial.write('/');
-    Serial.print(fmtName(g_imgMode));
+    Serial.print(fmtName(g_imgMode, g_imgY8));
   } else {
     Serial.print(F("none"));
   }
@@ -471,12 +505,14 @@ static void cmdPower(char **tok, uint8_t n) {
     }
     digitalWrite(PIN_CAM_PWDN, LOW);
     g_power = true;
+    g_configured = false;
     delay(300);
     cameraResetPulse();
     reportIdCheck(F("POWER"), true);
   } else if (n == 2 && strcmp_P(tok[1], PSTR("OFF")) == 0) {
     digitalWrite(PIN_CAM_PWDN, HIGH);
     g_power = false;
+    g_configured = false;
     g_cam = CAM_UNKNOWN;
     okBegin(F("POWER"));
     kvStr(F("state"), F("off"));
@@ -496,6 +532,7 @@ static void cmdReset(uint8_t n) {
     return;
   }
   cameraResetPulse();
+  g_configured = false;
   reportIdCheck(F("RESET"), false);
 }
 
@@ -672,6 +709,7 @@ static void cmdCamtest(char **tok, uint8_t n) {
   nl();
 
   // 3. Register table + read-back
+  g_configured = false;   // CAMTEST overwrites the registers
   uint8_t writeErrors = ov7670_configure(TEST_MODE);
   uint16_t checked, skipped;
   g_regCritical = 0;
@@ -713,6 +751,7 @@ static void cmdCamtest(char **tok, uint8_t n) {
   }
   g_imgValid = true;
   g_imgMode = TEST_MODE;
+  g_imgY8 = false;
   BarsCheck chk;
   barsCheckInit(&chk);
   streamImage(0, OV7670_MODE_BYTES(TEST_MODE), sendImage, &chk);
@@ -733,21 +772,30 @@ static void cmdCamtest(char **tok, uint8_t n) {
   nl();
 }
 
-static void cmdPicture(char **tok, uint8_t n) {
-  uint8_t fmt = 0;        // 0 = YUYV, 1 = BAYER
+// Writes the full register configuration for a mode (starts with a
+// register reset, so nothing from a previous CONFIG/CAMTEST survives).
+// Auto exposure/gain/white balance start from zero: the host should settle
+// before the first PICTURE.
+static void cmdConfig(char **tok, uint8_t n) {
+  uint8_t fmt = 0;        // 0 = YUYV, 1 = BAYER, 2 = Y8
   uint8_t res = 1;        // 0 = QQVGA, 1 = QVGA, 2 = VGA
-  bool bars = false, autoOn = true, send = true;
-  uint32_t settle = 1000;
+  uint8_t effect = OV7670_EFFECT_NONE;
+  bool bars = false, autoOn = true;
+  // Adjustments are applied only when given (otherwise camera defaults).
+  bool hasBright = false, hasContrast = false, hasSat = false;
+  bool hasExp = false, hasGain = false, hasEffect = false;
+  int32_t bright = 0;
+  uint32_t contrast = 0, sat = 0, exposure = 0, gain = 0;
 
   for (uint8_t i = 1; i < n; i++) {
     char *v = splitArg(tok[i]);
-    uint32_t x;
     bool ok = v != NULL;
     if (!ok) {
       // no '=': bad argument
     } else if (strcmp_P(tok[i], PSTR("FMT")) == 0) {
       if (strcmp_P(v, PSTR("YUYV")) == 0) fmt = 0;
       else if (strcmp_P(v, PSTR("BAYER")) == 0) fmt = 1;
+      else if (strcmp_P(v, PSTR("Y8")) == 0) fmt = 2;
       else ok = false;
     } else if (strcmp_P(tok[i], PSTR("RES")) == 0) {
       if (strcmp_P(v, PSTR("QQVGA")) == 0) res = 0;
@@ -762,38 +810,63 @@ static void cmdPicture(char **tok, uint8_t n) {
       if (strcmp_P(v, PSTR("ON")) == 0) autoOn = true;
       else if (strcmp_P(v, PSTR("OFF")) == 0) autoOn = false;
       else ok = false;
-    } else if (strcmp_P(tok[i], PSTR("SETTLE")) == 0) {
-      ok = parseU32(v, &settle) && settle <= SETTLE_MAX_MS;
-    } else if (strcmp_P(tok[i], PSTR("SEND")) == 0) {
-      ok = parseU32(v, &x) && x <= 1;
-      send = (x == 1);
+    } else if (strcmp_P(tok[i], PSTR("EFFECT")) == 0) {
+      hasEffect = true;
+      if (strcmp_P(v, PSTR("NONE")) == 0) effect = OV7670_EFFECT_NONE;
+      else if (strcmp_P(v, PSTR("MONO")) == 0) effect = OV7670_EFFECT_MONO;
+      else if (strcmp_P(v, PSTR("NEGATIVE")) == 0) effect = OV7670_EFFECT_NEGATIVE;
+      else if (strcmp_P(v, PSTR("SEPIA")) == 0) effect = OV7670_EFFECT_SEPIA;
+      else ok = false;
+    } else if (strcmp_P(tok[i], PSTR("BRIGHTNESS")) == 0) {
+      hasBright = true;
+      ok = parseI32(v, &bright) && bright >= -127 && bright <= 127;
+    } else if (strcmp_P(tok[i], PSTR("CONTRAST")) == 0) {
+      hasContrast = true;
+      ok = parseU32(v, &contrast) && contrast <= 255;
+    } else if (strcmp_P(tok[i], PSTR("SATURATION")) == 0) {
+      hasSat = true;
+      ok = parseU32(v, &sat) && sat <= 255;
+    } else if (strcmp_P(tok[i], PSTR("EXPOSURE")) == 0) {
+      hasExp = true;
+      ok = parseU32(v, &exposure) && exposure <= 65535;
+    } else if (strcmp_P(tok[i], PSTR("GAIN")) == 0) {
+      hasGain = true;
+      ok = parseU32(v, &gain) && gain <= 255;
     } else {
       ok = false;
     }
     if (!ok) {
-      err(F("PICTURE"), F("BAD_ARG"), tok[i]);
+      err(F("CONFIG"), F("BAD_ARG"), tok[i]);
       return;
     }
   }
 
   uint8_t mode;
-  if (fmt == 0 && res == 0) {
+  if (fmt != 1 && res == 0) {
     mode = OV7670_MODE_QQVGA_YUYV;
-  } else if (fmt == 0 && res == 1) {
+  } else if (fmt != 1 && res == 1) {
     mode = OV7670_MODE_QVGA_YUYV;
   } else if (fmt == 1 && res == 2) {
     mode = OV7670_MODE_VGA_BAYER;
   } else {
-    err(F("PICTURE"), F("BAD_ARG"), "unsupported fmt/res combination");
+    err(F("CONFIG"), F("BAD_ARG"), "unsupported fmt/res combination");
+    return;
+  }
+  // Effects and image adjustments are DSP functions: not in raw Bayer.
+  if (fmt == 1 && (hasEffect || hasBright || hasContrast || hasSat)) {
+    err(F("CONFIG"), F("BAD_ARG"), "effect/brightness/contrast/saturation need fmt=yuyv or y8");
+    return;
+  }
+  if (autoOn && (hasExp || hasGain)) {
+    err(F("CONFIG"), F("BAD_ARG"), "exposure/gain need auto=off");
     return;
   }
   if (!g_power) {
-    err(F("PICTURE"), F("POWER_OFF"), NULL);
+    err(F("CONFIG"), F("POWER_OFF"), NULL);
     return;
   }
 
-  // Full configuration (starts with a register reset, so nothing from a
-  // previous PICTURE/CAMTEST survives), then pattern and auto modes.
+  g_configured = false;
   uint8_t s = ov7670_configure(mode);
   if (s == 0 && bars) {
     s = ov7670_set_dsp_colour_bar(true);
@@ -801,18 +874,72 @@ static void cmdPicture(char **tok, uint8_t n) {
   if (s == 0) {
     s = ov7670_set_auto(autoOn);
   }
+  if (s == 0 && hasEffect) {
+    s = ov7670_set_effect(effect);
+  }
+  if (s == 0 && hasBright) {
+    s = ov7670_set_brightness((int8_t)bright);
+  }
+  if (s == 0 && hasContrast) {
+    s = ov7670_set_contrast((uint8_t)contrast);
+  }
+  if (s == 0 && hasSat) {
+    s = ov7670_set_saturation((uint8_t)sat);
+  }
+  if (s == 0 && hasExp) {
+    s = ov7670_set_exposure((uint16_t)exposure);
+  }
+  if (s == 0 && hasGain) {
+    s = ov7670_set_gain((uint8_t)gain);
+  }
   if (s != 0) {
     g_cam = CAM_FAIL;
-    err(F("PICTURE"), F("SCCB"), NULL);
+    err(F("CONFIG"), F("SCCB"), NULL);
     return;
   }
-  Serial.print(F("INFO configured "));
-  Serial.print(OV7670_MODE_WIDTH(mode));
-  Serial.write('x');
-  Serial.print(OV7670_MODE_HEIGHT(mode));
-  Serial.write(' ');
-  Serial.print(fmtName(mode));
+  g_configured = true;
+  g_cfgMode = mode;
+  g_cfgY8 = (fmt == 2);
+  okBegin(F("CONFIG"));
+  kvU32(F("w"), OV7670_MODE_WIDTH(mode));
+  kvU32(F("h"), OV7670_MODE_HEIGHT(mode));
+  kvStr(F("fmt"), fmtName(mode, g_cfgY8));
+  kvU32(F("bytes"), imageBytes(mode, g_cfgY8));
   nl();
+}
+
+// Captures one frame with the current configuration (no register writes,
+// so auto exposure keeps its converged state between pictures).
+static void cmdPicture(char **tok, uint8_t n) {
+  bool send = true;
+  uint32_t settle = 0;
+
+  for (uint8_t i = 1; i < n; i++) {
+    char *v = splitArg(tok[i]);
+    uint32_t x;
+    bool ok = false;
+    if (v != NULL && strcmp_P(tok[i], PSTR("SETTLE")) == 0) {
+      ok = parseU32(v, &settle) && settle <= SETTLE_MAX_MS;
+    } else if (v != NULL && strcmp_P(tok[i], PSTR("SEND")) == 0) {
+      ok = parseU32(v, &x) && x <= 1;
+      send = (x == 1);
+    }
+    if (!ok) {
+      err(F("PICTURE"), F("BAD_ARG"), tok[i]);
+      return;
+    }
+  }
+  if (!g_power) {
+    err(F("PICTURE"), F("POWER_OFF"), NULL);
+    return;
+  }
+  if (!g_configured) {
+    err(F("PICTURE"), F("NOT_CONFIGURED"), NULL);
+    return;
+  }
+  uint8_t mode = g_cfgMode;
+  bool y8 = g_cfgY8;
+
   if (settle != 0) {
     Serial.print(F("INFO settling "));
     Serial.print(settle);
@@ -822,20 +949,21 @@ static void cmdPicture(char **tok, uint8_t n) {
   }
 
   g_imgValid = false;   // SRAM is overwritten from here on
-  if (!snapshot(mode, 2)) {
+  if (!snapshot(mode, 0)) {
     err(F("PICTURE"), F("NO_VSYNC"), NULL);
     return;
   }
   g_imgValid = true;
   g_imgMode = mode;
-  uint32_t bytes = OV7670_MODE_BYTES(mode);
+  g_imgY8 = y8;
+  uint32_t bytes = imageBytes(mode, y8);
   if (send) {
     streamImage(0, bytes, true, NULL);
   }
   okBegin(F("PICTURE"));
   kvU32(F("w"), OV7670_MODE_WIDTH(mode));
   kvU32(F("h"), OV7670_MODE_HEIGHT(mode));
-  kvStr(F("fmt"), fmtName(mode));
+  kvStr(F("fmt"), fmtName(mode, y8));
   kvU32(F("bytes"), bytes);
   nl();
 }
@@ -861,7 +989,7 @@ static void cmdRead(char **tok, uint8_t n) {
     err(F("READ"), F("NO_IMAGE"), NULL);
     return;
   }
-  uint32_t total = OV7670_MODE_BYTES(g_imgMode);
+  uint32_t total = imageBytes(g_imgMode, g_imgY8);
   if (!haveLen && offset < total) {
     len = total - offset;
   }
@@ -917,6 +1045,8 @@ static void processLine() {
     cmdMemtest(n);
   } else if (strcmp_P(tok[0], PSTR("CAMTEST")) == 0) {
     cmdCamtest(tok, n);
+  } else if (strcmp_P(tok[0], PSTR("CONFIG")) == 0) {
+    cmdConfig(tok, n);
   } else if (strcmp_P(tok[0], PSTR("PICTURE")) == 0) {
     cmdPicture(tok, n);
   } else if (strcmp_P(tok[0], PSTR("READ")) == 0) {

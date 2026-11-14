@@ -467,3 +467,76 @@ uint8_t ov7670_set_auto(bool on) {
 uint8_t ov7670_set_dsp_colour_bar(bool on) {
   return ov7670_update_bits(REG_COM17, COM17_CBAR, on ? COM17_CBAR : 0);
 }
+
+// Datasheet: TSLB[5] negative image, TSLB[4] fixed U/V from MANU/MANV.
+uint8_t ov7670_set_effect(uint8_t effect) {
+  uint8_t tslb = 0, u = 0x80, v = 0x80;
+  switch (effect) {
+    case OV7670_EFFECT_NONE:     break;
+    case OV7670_EFFECT_MONO:     tslb = TSLB_FIXED_UV; break;
+    case OV7670_EFFECT_NEGATIVE: tslb = TSLB_NEGATIVE; break;
+    case OV7670_EFFECT_SEPIA:    tslb = TSLB_FIXED_UV; u = 0x40; v = 0xa0; break;
+    default:                     return OV7670_ERR_NODATA;
+  }
+  uint8_t st = ov7670_write(REG_MANU, u);
+  if (st == 0) {
+    st = ov7670_write(REG_MANV, v);
+  }
+  if (st == 0) {
+    st = ov7670_update_bits(REG_TSLB, TSLB_NEGATIVE | TSLB_FIXED_UV, tslb);
+  }
+  return st;
+}
+
+// Sign-magnitude, as the kernel's ov7670_abs_to_sm().
+uint8_t ov7670_set_brightness(int8_t brightness) {
+  uint8_t v = brightness >= 0 ? (uint8_t)brightness
+                              : (uint8_t)(0x80 | (uint8_t)(-brightness));
+  return ov7670_write(REG_BRIGHT, v);
+}
+
+uint8_t ov7670_set_contrast(uint8_t contrast) {
+  return ov7670_write(REG_CONTRAS, contrast);
+}
+
+// Kernel ov7670_calc_cmatrix() + ov7670_store_cmatrix() for the YUV422
+// matrix, without hue rotation.
+uint8_t ov7670_set_saturation(uint8_t saturation) {
+  static const int16_t base[6] = { 128, -128, 0, -34, -94, 128 };
+  uint8_t signbits = 0;
+  uint8_t st = ov7670_read(REG_CMATRIX_SIGN, &signbits);
+  if (st != 0) {
+    return st;
+  }
+  signbits &= 0xc0;  // "weird crap" in the upper bits, preserved
+  for (uint8_t i = 0; i < 6; i++) {
+    int16_t m = (int16_t)(((int32_t)base[i] * saturation) >> 7);
+    if (m < 0) {
+      signbits |= (uint8_t)(1 << i);
+      m = -m;
+    }
+    st = ov7670_write(REG_CMATRIX_BASE + i, m > 255 ? 0xff : (uint8_t)m);
+    if (st != 0) {
+      return st;
+    }
+  }
+  return ov7670_write(REG_CMATRIX_SIGN, signbits);
+}
+
+// Kernel ov7670_s_exp(): AEC[1:0] in COM1[1:0], AEC[9:2] in AECH,
+// AEC[15:10] in AECHH[5:0].
+uint8_t ov7670_set_exposure(uint16_t lines) {
+  uint8_t st = ov7670_update_bits(REG_COM1, 0x03, lines & 0x03);
+  if (st == 0) {
+    st = ov7670_write(REG_AECH, (lines >> 2) & 0xff);
+  }
+  if (st == 0) {
+    st = ov7670_update_bits(REG_AECHH, 0x3f, (lines >> 10) & 0x3f);
+  }
+  return st;
+}
+
+// Kernel ov7670_s_gain(): low 8 bits only.
+uint8_t ov7670_set_gain(uint8_t gain) {
+  return ov7670_write(REG_GAIN, gain);
+}

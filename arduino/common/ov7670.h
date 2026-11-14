@@ -38,17 +38,17 @@
 #define OV7670_MODE_BPP(m)    ((m) == OV7670_MODE_VGA_BAYER ? 1 : 2)
 #define OV7670_MODE_BYTES(m)  ((uint32_t)OV7670_MODE_WIDTH(m) * \
                                OV7670_MODE_HEIGHT(m) * OV7670_MODE_BPP(m))
-// PCLK = internal clock / PCLK_DIV (DCW PCLK scaling; Bayer: none).
-#define OV7670_MODE_PCLK_DIV(m) ((m) == OV7670_MODE_QQVGA_YUYV ? 4 : \
-                                 (m) == OV7670_MODE_QVGA_YUYV ? 2 : 1)
+// PCLK = internal clock / PCLK_DIV. YUYV: DCW PCLK scaling. Bayer: one
+// byte per pixel period (2 internal clocks), measured: with CLKRC = 0x07
+// the frame took ~1.6 s and the 640x480 image was correct, so PCLK was
+// ~250 kHz (the kernel's "raw doubles the frame rate" does not apply here).
+#define OV7670_MODE_PCLK_DIV(m) ((m) == OV7670_MODE_QQVGA_YUYV ? 4 : 2)
 // CLKRC, written last. Bit 6 (use external clock directly) must stay 0.
 // Chosen so PCLK = 500 kHz with the 8 MHz oscillator (breadboard-safe):
-//   QQVGA: 0x01 -> internal 2 MHz   / 4 -> 500 kHz, frame 400 ms
-//   QVGA:  0x03 -> internal 1 MHz   / 2 -> 500 kHz, frame 800 ms
-//   Bayer: 0x07 -> internal 500 kHz / 1 -> 500 kHz, frame ~800 ms (to be
-//          measured: raw output is 1 byte per pixel at the full pixel rate)
-#define OV7670_MODE_CLKRC(m)  ((m) == OV7670_MODE_QQVGA_YUYV ? 0x01 : \
-                               (m) == OV7670_MODE_QVGA_YUYV ? 0x03 : 0x07)
+//   QQVGA: 0x01 -> internal 2 MHz / 4 -> 500 kHz, frame 400 ms
+//   QVGA:  0x03 -> internal 1 MHz / 2 -> 500 kHz, frame 800 ms
+//   Bayer: 0x03 -> internal 1 MHz / 2 -> 500 kHz, frame 800 ms
+#define OV7670_MODE_CLKRC(m)  ((m) == OV7670_MODE_QQVGA_YUYV ? 0x01 : 0x03)
 
 // Internal clock = XCLK / (2 * (CLKRC[5:0] + 1)). The datasheet says
 // XCLK / (CLKRC[5:0] + 1), but on this hardware the measured frame period is
@@ -59,11 +59,11 @@
 #define OV7670_MODE_PCLK_KHZ(m) \
   (OV7670_MODE_INT_KHZ(m) / OV7670_MODE_PCLK_DIV(m))
 // Frame = 510 lines x 784 pixel periods; one pixel period is 2 internal
-// clocks in YUV (2 bytes/pixel) and 1 in raw Bayer. VSYNC = 3 lines.
+// clocks in every mode (measured for YUV and Bayer). VSYNC = 3 lines.
 #define OV7670_MODE_FRAME_US(m) \
-  (510UL * 784UL * OV7670_MODE_BPP(m) * 1000UL / OV7670_MODE_INT_KHZ(m))
+  (510UL * 784UL * 2UL * 1000UL / OV7670_MODE_INT_KHZ(m))
 #define OV7670_MODE_VSYNC_US(m) \
-  (3UL * 784UL * OV7670_MODE_BPP(m) * 1000UL / OV7670_MODE_INT_KHZ(m))
+  (3UL * 784UL * 2UL * 1000UL / OV7670_MODE_INT_KHZ(m))
 
 // 7-bit SCCB address (0x42 write / 0x43 read).
 #define OV7670_I2C_ADDR  0x21
@@ -144,6 +144,8 @@
 #define REG_HSYEN        0x31  // HSYNC falling edge delay
 #define REG_HREF         0x32  // HREF pieces
 #define REG_TSLB         0x3a  // lots of stuff
+#define   TSLB_NEGATIVE    0x20  // negative image
+#define   TSLB_FIXED_UV    0x10  // output fixed U/V from MANU/MANV
 #define   TSLB_OUT_SEQ     0x08  // output sequence, together with COM13[0]
 // (The kernel names bit 2 (0x04) "TSLB_YLAST", but the datasheet marks
 //  TSLB[2:1] as reserved; the byte order is set by TSLB[3] + COM13[0].)
@@ -177,6 +179,8 @@
 #define REG_BRIGHT       0x55  // Brightness
 #define REG_CONTRAS      0x56  // Contrast control
 #define REG_CMATRIX_SIGN 0x58
+#define REG_MANU         0x67  // manual U value (TSLB[4] = 1)
+#define REG_MANV         0x68  // manual V value (TSLB[4] = 1)
 #define REG_GFIX         0x69  // Fix gain control
 #define REG_GGAIN        0x6a  // G channel AWB gain (updated by AWB)
 #define REG_DBLV         0x6b  // PLL control and debugging
@@ -266,5 +270,26 @@ uint8_t ov7670_set_auto(bool on);
 // Enable/disable the DSP colour bar (COM17[3]), an alternative to the
 // SCALING_XSC/YSC test pattern.
 uint8_t ov7670_set_dsp_colour_bar(bool on);
+
+// Special effects (YUV only; raw Bayer bypasses the DSP).
+#define OV7670_EFFECT_NONE      0
+#define OV7670_EFFECT_MONO      1   // fixed U = V = 0x80
+#define OV7670_EFFECT_NEGATIVE  2
+#define OV7670_EFFECT_SEPIA     3   // fixed U = 0x40, V = 0xa0
+uint8_t ov7670_set_effect(uint8_t effect);
+
+// Image adjustments (YUV only), encoded like the kernel driver's controls.
+// Brightness -127..127 (0 = default). With auto exposure on, AEC partly
+// compensates (the kernel turns AEC off when brightness is set).
+uint8_t ov7670_set_brightness(int8_t brightness);
+// Contrast, raw CONTRAS value (kernel default table: 0x40).
+uint8_t ov7670_set_contrast(uint8_t contrast);
+// Saturation, 128 = the kernel default colour matrix, 0 = grey.
+uint8_t ov7670_set_saturation(uint8_t saturation);
+
+// Manual exposure in line periods (0..65535) and gain (0..255). Only
+// meaningful with auto exposure / gain off (ov7670_set_auto(false)).
+uint8_t ov7670_set_exposure(uint16_t lines);
+uint8_t ov7670_set_gain(uint8_t gain);
 
 #endif // OV7670_H
