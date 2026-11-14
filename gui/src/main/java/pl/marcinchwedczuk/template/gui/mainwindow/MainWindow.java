@@ -1,6 +1,7 @@
 package pl.marcinchwedczuk.template.gui.mainwindow;
 
 import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -108,8 +109,10 @@ public class MainWindow implements Initializable {
 
         pictureModeComboBox.disableProperty().bind(cannotRunCommand);
         loopToggleButton.disableProperty().bind(cannotRunCommand);
-        // While looping the button is "Stop".
-        takePictureButton.disableProperty().bind(cannotRunCommand.and(arduinoConnection.isLooping.not()));
+        // While looping the button is "Stop", after clicking it "Stopping..." (disabled).
+        takePictureButton.disableProperty().bind(
+                cannotRunCommand.and(arduinoConnection.isLooping.not())
+                        .or(arduinoConnection.isStopping));
         memoryTestButton.disableProperty().bind(cannotRunCommand);
         cameraTestButton.disableProperty().bind(cannotRunCommand);
 
@@ -126,10 +129,14 @@ public class MainWindow implements Initializable {
                 loopToggleButton.selectedProperty().map(loop -> loop ? "Loop" : "Single"));
         Image takePictureImage = takePictureIcon.getImage();
         Image stopImage = new Image(MainWindow.class.getResource("process-stop.png").toExternalForm());
-        arduinoConnection.isLooping.addListener((obs, was, looping) -> {
-            takePictureButton.setText(looping ? "Stop" : "Take picture");
+        InvalidationListener updateTakePictureButton = obs -> {
+            boolean looping = arduinoConnection.isLooping.get();
+            takePictureButton.setText(!looping ? "Take picture"
+                    : arduinoConnection.isStopping.get() ? "Stopping..." : "Stop");
             takePictureIcon.setImage(looping ? stopImage : takePictureImage);
-        });
+        };
+        arduinoConnection.isLooping.addListener(updateTakePictureButton);
+        arduinoConnection.isStopping.addListener(updateTakePictureButton);
 
         pictureModeComboBox.setItems(FXCollections.observableArrayList(PictureMode.values()));
         pictureModeComboBox.getSelectionModel().select(PictureMode.QVGA_YUYV);

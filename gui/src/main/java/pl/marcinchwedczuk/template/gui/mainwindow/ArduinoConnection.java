@@ -46,6 +46,9 @@ public class ArduinoConnection {
     public final BooleanProperty isBusy = new SimpleBooleanProperty(this, "isBusy", false);
     /** Continuous mode: pictures are taken one after another until {@link #stopLoop()}. */
     public final BooleanProperty isLooping = new SimpleBooleanProperty(this, "isLooping", false);
+    /** Stop was requested, the loop ends after the current frame. */
+    public final BooleanProperty isStopping = new SimpleBooleanProperty(this, "isStopping", false);
+    // Read by the worker thread, isStopping is for the UI.
     private volatile boolean stopLoopRequested = false;
 
     /** What the device is doing, e.g. "Taking picture...". Empty when idle. */
@@ -176,6 +179,7 @@ public class ArduinoConnection {
         if (!isLooping.get()) return;
 
         stopLoopRequested = true;
+        isStopping.set(true);
         activity.set("Loop: stopping after the current frame...");
     }
 
@@ -212,6 +216,7 @@ public class ArduinoConnection {
     private void endActivity() {
         isBusy.set(false);
         isLooping.set(false);
+        isStopping.set(false);
         activity.set("");
         transferProgress.set(-1);
         transferText.set("");
