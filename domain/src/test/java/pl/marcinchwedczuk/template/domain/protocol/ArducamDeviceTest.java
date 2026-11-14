@@ -52,46 +52,90 @@ class ArducamDeviceTest {
     }
 
     @Test
-    void picture_powers_camera_on_and_off() throws Exception {
+    void picture_powers_camera_on_once_and_leaves_it_on() throws Exception {
         var arduino = new FakeArduino(cmd -> cmd.startsWith("PICTURE")
                 ? pictureResponse(Crc16Xmodem.compute(IMAGE))
                 : standardResponse(cmd));
         var device = new ArducamDevice(new ArducamClient(arduino.input(), arduino.output()));
 
         RawImage image = device.takePicture(PictureMode.QQVGA_YUYV);
+        device.takePicture(PictureMode.QQVGA_YUYV);
 
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER off");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga", "PICTURE fmt=yuyv res=qqvga");
+        assertThat(device.isPowered()).isTrue();
         assertThat(image.width()).isEqualTo(160);
         assertThat(image.format()).isEqualTo(PixelFormat.YUYV);
         assertThat(image.data()).isEqualTo(IMAGE);
     }
 
     @Test
-    void camera_is_powered_off_when_picture_fails() {
+    void explicit_power_on_and_off() throws Exception {
+        var arduino = new FakeArduino(cmd -> cmd.startsWith("PICTURE")
+                ? pictureResponse(Crc16Xmodem.compute(IMAGE))
+                : standardResponse(cmd));
+        var device = new ArducamDevice(new ArducamClient(arduino.input(), arduino.output()));
+
+        device.powerOn();
+        device.takePicture(PictureMode.QQVGA_YUYV);
+        device.powerOff();
+
+        assertThat(arduino.receivedCommands()).containsExactly(
+                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER off");
+        assertThat(device.isPowered()).isFalse();
+    }
+
+    @Test
+    void camera_stays_on_when_picture_fails() throws Exception {
         var arduino = new FakeArduino(cmd -> cmd.startsWith("PICTURE")
                 ? text("ERR PICTURE NO_VSYNC")
                 : standardResponse(cmd));
         var device = new ArducamDevice(new ArducamClient(arduino.input(), arduino.output()));
+        device.powerOn();
 
         assertThatThrownBy(() -> device.takePicture(PictureMode.QVGA_YUYV))
                 .isInstanceOf(DeviceException.class)
                 .hasMessageContaining("NO_VSYNC");
-        assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qvga", "POWER off");
+        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "PICTURE fmt=yuyv res=qvga");
+        assertThat(device.isPowered()).isTrue();
     }
 
     @Test
-    void camera_is_powered_off_when_power_on_fails() {
-        var arduino = new FakeArduino(cmd -> cmd.equals("POWER on")
-                ? text("ERR POWER SCCB no answer")
-                : standardResponse(cmd));
+    void failed_power_on_is_retried_by_next_camera_command() throws Exception {
+        AtomicInteger powerOns = new AtomicInteger();
+        var arduino = new FakeArduino(cmd -> switch (cmd) {
+            case "POWER on" -> powerOns.incrementAndGet() == 1
+                    ? text("ERR POWER SCCB no answer")
+                    : standardResponse(cmd);
+            case "CAMTEST" -> text("OK CAMTEST result=pass");
+            default -> standardResponse(cmd);
+        });
         var device = new ArducamDevice(new ArducamClient(arduino.input(), arduino.output()));
 
-        assertThatThrownBy(device::cameraTest)
+        assertThatThrownBy(device::powerOn)
                 .isInstanceOf(DeviceException.class)
                 .hasMessageContaining("SCCB");
-        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "POWER off");
+        assertThat(device.isPowered()).isFalse();
+
+        device.cameraTest();
+
+        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "POWER on", "CAMTEST");
+        assertThat(device.isPowered()).isTrue();
+    }
+
+    @Test
+    void power_off_error_after_firmware_reset_powers_on_and_retries() throws Exception {
+        AtomicInteger pictures = new AtomicInteger();
+        var arduino = new FakeArduino(cmd -> cmd.startsWith("PICTURE")
+                ? (pictures.incrementAndGet() == 1 ? text("ERR PICTURE POWER_OFF") : pictureResponse(Crc16Xmodem.compute(IMAGE)))
+                : standardResponse(cmd));
+        var device = new ArducamDevice(new ArducamClient(arduino.input(), arduino.output()));
+        device.powerOn();
+
+        device.takePicture(PictureMode.QQVGA_YUYV);
+
+        assertThat(arduino.receivedCommands()).containsExactly(
+                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER on", "PICTURE fmt=yuyv res=qqvga");
     }
 
     @Test
@@ -111,7 +155,7 @@ class ArducamDeviceTest {
 
         assertThat(image.data()).isEqualTo(IMAGE);
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER off", "READ", "READ");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga", "READ", "READ");
     }
 
     @Test
@@ -147,7 +191,7 @@ class ArducamDeviceTest {
         assertThat(report.passed()).isTrue();
         assertThat(report.tests()).hasSize(5);
         assertThat(report.summary()).contains("Camera test: PASS", "timing PASS frame_us=398736");
-        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "CAMTEST", "POWER off");
+        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "CAMTEST");
     }
 
     @Test

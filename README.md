@@ -12,7 +12,9 @@ The firmware is in `arduino/arducam`, the serial protocol is described in
 - rotate pictures (by default they are rotated 90° clockwise, because
   the camera is mounted rotated) and save them as PNG or BMP.
 
-The camera is powered on only for the duration of camera commands.
+The camera is powered on after connecting and powered off before disconnecting
+(powering it on for each picture gives blurry pictures, auto exposure and
+white balance need time to settle).
 All commands and responses are logged, except binary image data.
 
 How to build and run the app:

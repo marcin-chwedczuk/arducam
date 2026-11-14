@@ -42,7 +42,10 @@ public class MainWindow implements Initializable {
             window.setTitle("Arducam");
             window.setScene(scene);
             window.setResizable(true);
-            window.setOnHidden(e -> controller.arduinoConnection.disconnectAsync());
+            window.setOnCloseRequest(e -> {
+                e.consume();
+                controller.exitApp();
+            });
 
             window.show();
 
@@ -230,7 +233,19 @@ public class MainWindow implements Initializable {
     }
 
     public void closeApp(ActionEvent event) {
-        arduinoConnection.disconnectAsync();
-        Platform.exit();
+        exitApp();
+    }
+
+    /**
+     * Powers the camera off and exits. When a command is still running (a picture can take
+     * up to 35 s), exits immediately instead: there is no way to abort a command.
+     */
+    private void exitApp() {
+        if (arduinoConnection.isBusy.get()) {
+            Platform.exit();
+            return;
+        }
+
+        arduinoConnection.disconnectAsync(true, Platform::exit);
     }
 }

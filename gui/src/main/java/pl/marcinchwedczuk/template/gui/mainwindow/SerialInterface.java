@@ -116,10 +116,15 @@ public class SerialInterface {
         }
     }
 
-    public record Connection(SerialPort port, ArducamDevice device, DeviceStatus status) { }
+    /**
+     * @param powerOnError why the camera could not be powered on, null on success.
+     *                     The connection is still usable (e.g. for the memory test).
+     */
+    public record Connection(SerialPort port, ArducamDevice device, DeviceStatus status, Exception powerOnError) { }
 
     /**
-     * Opens the port and performs the protocol handshake.
+     * Opens the port, performs the protocol handshake and powers the camera on.
+     * The camera stays on while connected, so that auto exposure and white balance can settle.
      * The Arduino is connected through an external USB-serial module, so opening
      * the port does not reset it and there is no need to wait for a boot.
      */
@@ -152,7 +157,16 @@ public class SerialInterface {
                 ArducamDevice device = new ArducamDevice(client);
 
                 DeviceStatus status = device.handshake();
-                return new Connection(port, device, status);
+
+                Exception powerOnError = null;
+                try {
+                    device.powerOn();
+                } catch (Exception e) {
+                    logger.logEvent("Camera power on failed: " + e.getMessage());
+                    powerOnError = e;
+                }
+
+                return new Connection(port, device, status, powerOnError);
             } catch (Exception e) {
                 port.closePort();
                 logger.logEvent("Port closed.");
@@ -161,15 +175,27 @@ public class SerialInterface {
         }
     }
 
+    /** Powers the camera off (unless {@code device} is null) and closes the port. */
     public static class CloseSerialPort extends Message<SerialPort> {
         private final SerialPort port;
+        private final ArducamDevice device;
 
-        public CloseSerialPort(SerialPort port) {
+        public CloseSerialPort(SerialPort port, ArducamDevice device) {
             this.port = requireNonNull(port);
+            this.device = device;
         }
 
         @Override
         SerialPort innerExecute(SerialPortLogger logger) {
+            if (device != null) {
+                try {
+                    device.powerOff();
+                } catch (Exception e) {
+                    // Close the port anyway.
+                    logger.logEvent("Camera power off failed: " + e.getMessage());
+                }
+            }
+
             logger.logEvent("Closing port.");
             port.closePort();
             return port;

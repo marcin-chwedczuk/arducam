@@ -94,22 +94,40 @@ public class ArduinoConnection {
                     deviceInfo.set(String.format("%s — firmware %s %s, protocol %s",
                             c.port().getSystemPortName(), c.status().firmware(),
                             c.status().version(), c.status().protocol()));
+                    if (c.powerOnError() != null) {
+                        errorListener.onError(new RuntimeException(
+                                "Connected, but powering the camera on failed: " + c.powerOnError().getMessage()
+                                + "\nCamera commands will try again.", c.powerOnError()));
+                    }
                 })
                 .setOnFailure(e -> errorListener.onError(e))
                 .setAtExit(this::endActivity));
     }
 
+    /** Powers the camera off and closes the port. */
     public void disconnectAsync() {
-        if (connection == null) return;
+        disconnectAsync(true, () -> { });
+    }
 
-        SerialPort port = connection.port();
+    /**
+     * @param powerOff send {@code POWER off} before closing; pointless when the connection is lost.
+     * @param onClosed called when the port is closed, or immediately when not connected.
+     */
+    public void disconnectAsync(boolean powerOff, Runnable onClosed) {
+        if (connection == null) {
+            onClosed.run();
+            return;
+        }
+
+        Connection c = connection;
         connection = null;
         isConnected.set(false);
         deviceInfo.set("Not connected");
 
         // Queued after any running operation, the worker executes messages in order.
-        serialInterface.sent(new CloseSerialPort(port)
-                .setOnFailure(e -> errorListener.onError(e)));
+        serialInterface.sent(new CloseSerialPort(c.port(), powerOff ? c.device() : null)
+                .setOnFailure(e -> errorListener.onError(e))
+                .setAtExit(onClosed));
     }
 
     public void takePictureAsync(PictureMode mode, Consumer<Picture> onPicture) {
@@ -139,7 +157,7 @@ public class ArduinoConnection {
 
     private void onDeviceFailure(Exception e) {
         if (e instanceof ProtocolException pe && pe.kind() == ProtocolException.Kind.DISCONNECTED) {
-            disconnectAsync();
+            disconnectAsync(false, () -> { });
         }
         errorListener.onError(e);
     }

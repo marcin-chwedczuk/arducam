@@ -8,8 +8,13 @@ import static java.util.Objects.requireNonNull;
 
 /**
  * High level operations on the arducam firmware. Implements the "smart host" part of the
- * protocol: the camera is powered on only for the duration of camera commands, images are
- * validated and re-fetched with {@code READ} on CRC errors.
+ * protocol: images are validated and re-fetched with {@code READ} on CRC errors.
+ *
+ * <p>The camera should stay powered while connected: powering it on for each picture
+ * gives blurry pictures, because auto exposure and white balance have no time to settle.
+ * Use {@link #powerOn()} after the handshake and {@link #powerOff()} before disconnecting.
+ * Camera commands power the camera on if needed (e.g. after a failed power on, or when
+ * the firmware was reset and reports {@code POWER_OFF}).
  *
  * <p>Not thread safe, use from a single thread.
  */
@@ -28,6 +33,8 @@ public class ArducamDevice {
     private static final int BYTES_PER_SECOND = 25_000;
 
     private final ArducamClient client;
+    /** What we believe the camera power state is. */
+    private boolean powered = false;
 
     public ArducamDevice(ArducamClient client) {
         this.client = requireNonNull(client);
@@ -62,16 +69,31 @@ public class ArducamDevice {
         return TestReport.from("Memory test", executeOk("MEMTEST", MEMTEST_TIMEOUT));
     }
 
+    public boolean isPowered() {
+        return powered;
+    }
+
+    public void powerOn() throws IOException, DeviceException {
+        // On ERR POWER SCCB the camera stays powered but is unusable, keep 'powered' false
+        // so that the next camera command tries again (POWER on when on is not an error).
+        executeOk("POWER on", POWER_ON_TIMEOUT);
+        powered = true;
+    }
+
+    public void powerOff() throws IOException, DeviceException {
+        powered = false;
+        executeOk("POWER off", POWER_OFF_TIMEOUT);
+    }
+
     public TestReport cameraTest() throws IOException, DeviceException {
-        return withCameraPower(() ->
-                TestReport.from("Camera test", executeOk("CAMTEST", CAMTEST_TIMEOUT)));
+        return TestReport.from("Camera test", executeCameraCommand("CAMTEST", CAMTEST_TIMEOUT));
     }
 
     public RawImage takePicture(PictureMode mode) throws IOException, DeviceException {
-        CommandResult result = withCameraPower(() -> executeOk(mode.command(), mode.timeout()));
+        CommandResult result = executeCameraCommand(mode.command(), mode.timeout());
 
         DataBlock block = singleWholeImageBlock(result);
-        // The image stays in SRAM after power off, READ does not need the camera.
+        // READ does not need the camera, it reads the image from SRAM.
         for (int retry = 1; !block.crcOk() && retry <= MAX_READ_RETRIES; retry++) {
             int bytes = block.data().length;
             Duration timeout = Duration.ofSeconds(bytes / BYTES_PER_SECOND + 10);
@@ -103,27 +125,22 @@ public class ArducamDevice {
         return block;
     }
 
-    private <R> R withCameraPower(CameraAction<R> action) throws IOException, DeviceException {
-        R result;
-        try {
-            // On ERR POWER SCCB the camera stays powered, so power off is needed in that case too.
-            executeOk("POWER on", POWER_ON_TIMEOUT);
-            result = action.run();
-        } catch (IOException | DeviceException | RuntimeException e) {
-            try {
-                powerOff();
-            } catch (Exception suppressed) {
-                e.addSuppressed(suppressed);
-            }
-            throw e;
+    /** Runs a command that needs the camera powered on. */
+    private CommandResult executeCameraCommand(String command, Duration timeout) throws IOException, DeviceException {
+        if (!powered) {
+            powerOn();
         }
 
-        powerOff();
-        return result;
-    }
+        try {
+            return executeOk(command, timeout);
+        } catch (DeviceException e) {
+            if (!"POWER_OFF".equals(e.errorCode())) throw e;
 
-    private void powerOff() throws IOException, DeviceException {
-        executeOk("POWER off", POWER_OFF_TIMEOUT);
+            // Firmware was reset (e.g. reset button), the camera is off again.
+            powered = false;
+            powerOn();
+            return executeOk(command, timeout);
+        }
     }
 
     private CommandResult executeOk(String command, Duration timeout) throws IOException, DeviceException {
@@ -132,10 +149,5 @@ public class ArducamDevice {
             throw DeviceException.fromErr(result.finalLine());
         }
         return result;
-    }
-
-    @FunctionalInterface
-    private interface CameraAction<R> {
-        R run() throws IOException, DeviceException;
     }
 }
