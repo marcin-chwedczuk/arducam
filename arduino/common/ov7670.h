@@ -1,4 +1,4 @@
-// ov7670.h — minimal OV7670 SCCB driver for the arducam test firmware.
+// ov7670.h — minimal OV7670 SCCB driver, shared by the arducam sketches.
 //
 // Register names/addresses and the register tables in ov7670.cpp are taken
 // from the Linux kernel driver drivers/media/i2c/ov7670.c
@@ -19,40 +19,51 @@
 // Frequency of the external oscillator feeding XCLK.
 #define OV7670_XCLK_HZ   8000000UL
 
-// Output size (both YUYV, 2 bytes/pixel, from the 640x480 window scaled
-// down by the DCW block):
-//   0 = QQVGA 160x120 ( 38,400 bytes), PCLK = internal clock / 4
-//   1 = QVGA  320x240 (153,600 bytes), PCLK = internal clock / 2
+// Capture modes. All use the 640x480 sensor window.
+//   QQVGA YUYV: DCW down-sampling /4, 160x120,  2 B/pixel,  38,400 bytes
+//   QVGA  YUYV: DCW down-sampling /2, 320x240,  2 B/pixel, 153,600 bytes
+//   VGA  Bayer: no scaling, raw BGGR,  640x480,  1 B/pixel, 307,200 bytes
 // (VGA YUYV = 614,400 bytes does not fit in the 512 KB SRAM.)
-#define OV7670_QVGA      1
+#define OV7670_MODE_QQVGA_YUYV  0
+#define OV7670_MODE_QVGA_YUYV   1
+#define OV7670_MODE_VGA_BAYER   2
+#define OV7670_MODE_COUNT       3
 
-#if OV7670_QVGA
-#define OV7670_WIDTH     320
-#define OV7670_HEIGHT    240
-#define OV7670_PCLK_DIV  2
-#define OV7670_SIZE_NAME "QVGA"
-#else
-#define OV7670_WIDTH     160
-#define OV7670_HEIGHT    120
-#define OV7670_PCLK_DIV  4
-#define OV7670_SIZE_NAME "QQVGA"
-#endif
-
-// CLKRC value written last. Bit 6 (use external clock directly) must stay 0.
+// Per-mode constants as macros, so they are compile-time constants when the
+// mode is a constant (the self-test sketch sizes its buffers with them).
+#define OV7670_MODE_WIDTH(m)  ((m) == OV7670_MODE_QQVGA_YUYV ? 160 : \
+                               (m) == OV7670_MODE_QVGA_YUYV ? 320 : 640)
+#define OV7670_MODE_HEIGHT(m) ((m) == OV7670_MODE_QQVGA_YUYV ? 120 : \
+                               (m) == OV7670_MODE_QVGA_YUYV ? 240 : 480)
+#define OV7670_MODE_BPP(m)    ((m) == OV7670_MODE_VGA_BAYER ? 1 : 2)
+#define OV7670_MODE_BYTES(m)  ((uint32_t)OV7670_MODE_WIDTH(m) * \
+                               OV7670_MODE_HEIGHT(m) * OV7670_MODE_BPP(m))
+// PCLK = internal clock / PCLK_DIV (DCW PCLK scaling; Bayer: none).
+#define OV7670_MODE_PCLK_DIV(m) ((m) == OV7670_MODE_QQVGA_YUYV ? 4 : \
+                                 (m) == OV7670_MODE_QVGA_YUYV ? 2 : 1)
+// CLKRC, written last. Bit 6 (use external clock directly) must stay 0.
 // Chosen so PCLK = 500 kHz with the 8 MHz oscillator (breadboard-safe):
-//   QQVGA: 0x01 -> internal 2 MHz / 4 -> 500 kHz, frame 400 ms
-//   QVGA:  0x03 -> internal 1 MHz / 2 -> 500 kHz, frame 800 ms
-#if OV7670_QVGA
-#define CLKRC_VAL        0x03
-#else
-#define CLKRC_VAL        0x01
-#endif
+//   QQVGA: 0x01 -> internal 2 MHz   / 4 -> 500 kHz, frame 400 ms
+//   QVGA:  0x03 -> internal 1 MHz   / 2 -> 500 kHz, frame 800 ms
+//   Bayer: 0x07 -> internal 500 kHz / 1 -> 500 kHz, frame ~800 ms (to be
+//          measured: raw output is 1 byte per pixel at the full pixel rate)
+#define OV7670_MODE_CLKRC(m)  ((m) == OV7670_MODE_QQVGA_YUYV ? 0x01 : \
+                               (m) == OV7670_MODE_QVGA_YUYV ? 0x03 : 0x07)
 
-// Internal clock = XCLK / OV7670_CLK_DIV. The datasheet says
+// Internal clock = XCLK / (2 * (CLKRC[5:0] + 1)). The datasheet says
 // XCLK / (CLKRC[5:0] + 1), but on this hardware the measured frame period is
 // exactly twice that (398.7 ms with CLKRC = 0x01; the kernel driver notes
 // the same extra /2 for the OV7675), so the firmware assumes the extra /2.
-#define OV7670_CLK_DIV   (2UL * ((CLKRC_VAL & 0x3f) + 1))
+#define OV7670_MODE_INT_KHZ(m) \
+  (OV7670_XCLK_HZ / (2UL * ((OV7670_MODE_CLKRC(m) & 0x3f) + 1)) / 1000)
+#define OV7670_MODE_PCLK_KHZ(m) \
+  (OV7670_MODE_INT_KHZ(m) / OV7670_MODE_PCLK_DIV(m))
+// Frame = 510 lines x 784 pixel periods; one pixel period is 2 internal
+// clocks in YUV (2 bytes/pixel) and 1 in raw Bayer. VSYNC = 3 lines.
+#define OV7670_MODE_FRAME_US(m) \
+  (510UL * 784UL * OV7670_MODE_BPP(m) * 1000UL / OV7670_MODE_INT_KHZ(m))
+#define OV7670_MODE_VSYNC_US(m) \
+  (3UL * 784UL * OV7670_MODE_BPP(m) * 1000UL / OV7670_MODE_INT_KHZ(m))
 
 // 7-bit SCCB address (0x42 write / 0x43 read).
 #define OV7670_I2C_ADDR  0x21
@@ -224,11 +235,11 @@ uint8_t ov7670_update_bits(uint8_t reg, uint8_t mask, uint8_t val);
 // Writes a PROGMEM table; returns the number of failed writes.
 uint8_t ov7670_write_table(const ov7670_regval *table);
 
-// Writes the complete YUYV configuration for the size selected by
-// OV7670_QVGA: kernel defaults, kernel YUV422 format, window, DCW scaling,
-// then the mandatory overrides (CLKRC, DBLV, COM10, COM15, byte order).
-// Returns the number of failed writes.
-uint8_t ov7670_configure_yuyv();
+// Writes the complete configuration for a mode (OV7670_MODE_*): kernel
+// defaults (starting with a register reset), format (YUV422 or raw Bayer),
+// window, mandatory overrides, then the mode's scaling and CLKRC.
+// Returns the number of failed writes; 0xff for an invalid mode.
+uint8_t ov7670_configure(uint8_t mode);
 
 // Called by ov7670_verify_config() for every register that does not read
 // back as expected. status != 0 means the read itself failed (Wire error).
@@ -238,7 +249,7 @@ typedef void (*ov7670_mismatch_cb)(uint8_t reg, uint8_t expected,
                                    uint8_t actual, uint8_t mask,
                                    uint8_t status, bool critical);
 
-// Reads back every register written by ov7670_configure_yuyv()
+// Reads back every register written by the last ov7670_configure()
 // (only the last value written to each register counts). Registers that the
 // chip changes on its own (AEC/AGC/AWB) are skipped or masked.
 // Returns number of mismatches (incl. read errors); *checked = registers

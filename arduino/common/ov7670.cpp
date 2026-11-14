@@ -148,8 +148,8 @@ static const ov7670_regval PROGMEM ov7670_fmt_yuv422[] = {
 // Window: the kernel's VGA window (ov7670_win_sizes[0]: hstart 158,
 // hstop 14, vstart 10, vstop 490), encoded the way ov7670_set_hw() does it.
 // Width = 784 - 158 + 14 = 640, height = 490 - 10 = 480; the DCW
-// down-sampling below divides both by 2 (QVGA, 320 x 240) or 4 (QQVGA,
-// 160 x 120).
+// down-sampling divides both by 2 (QVGA, 320 x 240) or 4 (QQVGA, 160 x 120);
+// VGA Bayer uses it unscaled.
 // The top bits of HREF (0x80) and VREF (0x0) are kept from the default table,
 // as ov7670_set_hw() does with read-modify-write.
 #define WIN_HSTART 158
@@ -166,49 +166,88 @@ static const ov7670_regval PROGMEM ov7670_window_vga[] = {
   { OV7670_END, OV7670_END },
 };
 
-// DCW scaling, from LiveOV7670 CameraOV7670RegistersQQVGA.cpp /
-// CameraOV7670RegistersQVGA.cpp (the kernel driver uses neither). LiveOV7670
-// also uses slightly larger windows with padding; we keep the kernel's exact
-// 640x480 window instead so that a line is exactly OV7670_WIDTH pixels.
-// COM14[3] (manual scaling) must be 1 for 0x73 to take effect.
-static const ov7670_regval PROGMEM ov7670_scale[] = {
-  { REG_COM3, COM3_DCWEN },          // enable downsamp/crop/window
-#if OV7670_QVGA
-  { REG_COM14, 0x19 },               // DCW/PCLK scaling enable, PCLK / 2
-  { REG_SCALING_DCWCTR, 0x11 },      // downsample by 2 (H and V)
-  { REG_SCALING_PCLK_DIV, 0xf1 },    // DSP clock / 2
-#else
-  { REG_COM14, 0x1a },               // DCW/PCLK scaling enable, PCLK / 4
-  { REG_SCALING_DCWCTR, 0x22 },      // downsample by 4 (H and V)
-  { REG_SCALING_PCLK_DIV, 0xf2 },    // DSP clock / 4
-#endif
+// Linux kernel ov7670.c: ov7670_fmt_raw[], copied verbatim (raw Bayer
+// BGGR, declared as MEDIA_BUS_FMT_SBGGR8_1X8 by the kernel).
+static const ov7670_regval PROGMEM ov7670_fmt_raw[] = {
+  { REG_COM7, COM7_BAYER },
+  { REG_COM13, 0x08 },    // No gamma, magic rsvd bit
+  { REG_COM16, 0x3d },    // Edge enhancement, denoise
+  { REG_REG76, 0xe1 },    // Pix correction, magic rsvd
   { OV7670_END, OV7670_END },
 };
 
-// Mandatory overrides for this hardware, written last.
+// Mandatory overrides for this hardware (all modes).
 static const ov7670_regval PROGMEM ov7670_overrides[] = {
   { REG_DBLV, DBLV_BYPASS },   // bits 7:6 = 00 -> PLL bypassed
   { REG_COM10, 0x00 },         // PCLK free-running in blanking, VSYNC
                                // positive, HREF (not HSYNC), PCLK normal
+  { OV7670_END, OV7670_END },
+};
+
+// YUYV-only overrides.
+static const ov7670_regval PROGMEM ov7670_overrides_yuyv[] = {
   { REG_COM15, COM15_R00FF },  // full range 00..FF, YUV (RGB bits off)
   // Byte order Y0 U0 Y1 V0. The datasheet says TSLB[3] = 0 + COM13[0] = 0
   // gives YUYV, but on the real hardware that produced Y V Y U (blue jeans
   // came out beige, a wooden floor blue), so the UV swap bit is set.
   { REG_TSLB, 0x04 },          // bit 3 = 0
   { REG_COM13, COM13_GAMMA | COM13_UVSAT | COM13_UVSWAP }, // bit 0 = 1
-  { REG_CLKRC, CLKRC_VAL & CLK_SCALE },     // last, like the kernel does
   { OV7670_END, OV7670_END },
 };
 
-// All tables, in the order they are written.
-static const ov7670_regval *const config_tables[] = {
-  ov7670_default_regs,
-  ov7670_fmt_yuv422,
-  ov7670_window_vga,
-  ov7670_scale,
-  ov7670_overrides,
+// Per-mode scaling + CLKRC (written last, like the kernel does).
+// DCW scaling values from LiveOV7670 CameraOV7670RegistersQQVGA.cpp /
+// CameraOV7670RegistersQVGA.cpp (the kernel driver uses neither). LiveOV7670
+// also uses slightly larger windows with padding; we keep the kernel's exact
+// 640x480 window instead so that a line is exactly the mode's width.
+// COM14[3] (manual scaling) must be 1 for 0x73 to take effect.
+static const ov7670_regval PROGMEM ov7670_mode_qqvga[] = {
+  { REG_COM3, COM3_DCWEN },          // enable downsamp/crop/window
+  { REG_COM14, 0x1a },               // DCW/PCLK scaling enable, PCLK / 4
+  { REG_SCALING_DCWCTR, 0x22 },      // downsample by 4 (H and V)
+  { REG_SCALING_PCLK_DIV, 0xf2 },    // DSP clock / 4
+  { REG_CLKRC, OV7670_MODE_CLKRC(OV7670_MODE_QQVGA_YUYV) },
+  { OV7670_END, OV7670_END },
 };
-#define N_CONFIG_TABLES (sizeof(config_tables) / sizeof(config_tables[0]))
+static const ov7670_regval PROGMEM ov7670_mode_qvga[] = {
+  { REG_COM3, COM3_DCWEN },          // enable downsamp/crop/window
+  { REG_COM14, 0x19 },               // DCW/PCLK scaling enable, PCLK / 2
+  { REG_SCALING_DCWCTR, 0x11 },      // downsample by 2 (H and V)
+  { REG_SCALING_PCLK_DIV, 0xf1 },    // DSP clock / 2
+  { REG_CLKRC, OV7670_MODE_CLKRC(OV7670_MODE_QVGA_YUYV) },
+  { OV7670_END, OV7670_END },
+};
+// VGA: no scaling (the kernel default values, restated explicitly).
+static const ov7670_regval PROGMEM ov7670_mode_vga[] = {
+  { REG_COM3, 0x00 },
+  { REG_COM14, 0x00 },
+  { REG_SCALING_DCWCTR, 0x11 },
+  { REG_SCALING_PCLK_DIV, 0xf0 },
+  { REG_CLKRC, OV7670_MODE_CLKRC(OV7670_MODE_VGA_BAYER) },
+  { OV7670_END, OV7670_END },
+};
+
+// Empty table (Bayer has no format-specific overrides).
+static const ov7670_regval PROGMEM ov7670_none[] = {
+  { OV7670_END, OV7670_END },
+};
+
+// Table sequences per mode, in the order they are written.
+#define N_CONFIG_TABLES 6
+static const ov7670_regval *const mode_tables[OV7670_MODE_COUNT][N_CONFIG_TABLES] = {
+  // QQVGA YUYV
+  { ov7670_default_regs, ov7670_fmt_yuv422, ov7670_window_vga,
+    ov7670_overrides, ov7670_overrides_yuyv, ov7670_mode_qqvga },
+  // QVGA YUYV
+  { ov7670_default_regs, ov7670_fmt_yuv422, ov7670_window_vga,
+    ov7670_overrides, ov7670_overrides_yuyv, ov7670_mode_qvga },
+  // VGA Bayer
+  { ov7670_default_regs, ov7670_fmt_raw, ov7670_window_vga,
+    ov7670_overrides, ov7670_none, ov7670_mode_vga },
+};
+
+// Tables of the last ov7670_configure(), used by ov7670_verify_config().
+static const ov7670_regval *const *config_tables = mode_tables[0];
 
 // ---------------------------------------------------------------------------
 // Low level SCCB access
@@ -266,7 +305,11 @@ uint8_t ov7670_write_table(const ov7670_regval *table) {
   return failed;
 }
 
-uint8_t ov7670_configure_yuyv() {
+uint8_t ov7670_configure(uint8_t mode) {
+  if (mode >= OV7670_MODE_COUNT) {
+    return 0xff;
+  }
+  config_tables = mode_tables[mode];
   uint8_t failed = 0;
   for (uint8_t t = 0; t < N_CONFIG_TABLES; t++) {
     failed += ov7670_write_table(config_tables[t]);

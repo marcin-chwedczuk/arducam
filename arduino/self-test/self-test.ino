@@ -57,19 +57,21 @@
 // ---------------------------------------------------------------------------
 // Image / test parameters
 // ---------------------------------------------------------------------------
-#define IMG_W            OV7670_WIDTH                       // see ov7670.h
-#define IMG_H            OV7670_HEIGHT
+// Capture mode used by the self-test (YUYV only: the image checks assume
+// Y0 U0 Y1 V0). OV7670_MODE_QVGA_YUYV or OV7670_MODE_QQVGA_YUYV.
+#define TEST_MODE        OV7670_MODE_QVGA_YUYV
+#define IMG_W            OV7670_MODE_WIDTH(TEST_MODE)       // see ov7670.h
+#define IMG_H            OV7670_MODE_HEIGHT(TEST_MODE)
 #define IMG_LINE_BYTES   (IMG_W * 2)                        // YUYV: 2 B/pixel
 #define IMG_BYTES        ((uint32_t)IMG_LINE_BYTES * IMG_H) // 153600 / 38400
 static_assert(IMG_BYTES % 16 == 0, "image must be a whole number of hex lines");
 
-// Expected camera timing. Internal clock = XCLK / OV7670_CLK_DIV. One frame =
+// Expected camera timing (see the OV7670_MODE_* macros). One frame =
 // 510 lines x 784 pixel periods x 2 internal clocks (YUV, 2 bytes/pixel);
-// VSYNC = 3 lines. PCLK = internal clock / OV7670_PCLK_DIV (DCW scaling).
-#define INT_KHZ          (OV7670_XCLK_HZ / OV7670_CLK_DIV / 1000)
-#define EXP_PCLK_KHZ     (INT_KHZ / OV7670_PCLK_DIV)
-#define EXP_PERIOD_US    (799680UL * 1000UL / INT_KHZ)  // 510 * 784 * 2
-#define EXP_VSYNC_US     (4704UL * 1000UL / INT_KHZ)    // 3 * 784 * 2
+// VSYNC = 3 lines. PCLK = internal clock / PCLK divider (DCW scaling).
+#define EXP_PCLK_KHZ     OV7670_MODE_PCLK_KHZ(TEST_MODE)
+#define EXP_PERIOD_US    OV7670_MODE_FRAME_US(TEST_MODE)
+#define EXP_VSYNC_US     OV7670_MODE_VSYNC_US(TEST_MODE)
 // VSYNC wait timeout: 2 s, or 3 expected frame periods if that is longer.
 #define VSYNC_TIMEOUT_MS ((3UL * EXP_PERIOD_US / 1000) > 2000 ? \
                           (3UL * EXP_PERIOD_US / 1000) : 2000UL)
@@ -621,7 +623,7 @@ static void cameraBringUp() {
   ov7670_write(REG_BRIGHT, 0x00);
 
   // Full register table
-  uint8_t failed = ov7670_configure_yuyv();
+  uint8_t failed = ov7670_configure(TEST_MODE);
   if (failed != 0) {
     st(S_FAIL);
     Serial.print(failed);
@@ -629,7 +631,7 @@ static void cameraBringUp() {
     nl();
   } else {
     st(S_PASS);
-    Serial.print(F("register table written (" OV7670_SIZE_NAME " "));
+    Serial.print(F("register table written ("));
     Serial.print(IMG_W);
     Serial.write('x');
     Serial.print(IMG_H);
@@ -733,7 +735,7 @@ static void timingTest() {
     st(S_FAIL);
     Serial.print(F("PCLK above "));
     Serial.print(MAX_PCLK_KHZ);
-    Serial.print(F(" kHz: too fast for the breadboard, increase CLKRC_VAL"));
+    Serial.print(F(" kHz: too fast for the breadboard, increase the mode's CLKRC"));
     nl();
   } else if (estKhz < expPclkKhz * 7 / 10) {
     stln(S_WARN, F("PCLK far below expectation (check oscillator / CLKRC / DBLV)"));
