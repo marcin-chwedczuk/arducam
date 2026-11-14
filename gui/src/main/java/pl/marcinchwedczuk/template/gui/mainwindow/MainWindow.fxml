@@ -5,6 +5,7 @@
 <?import javafx.scene.image.Image?>
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.*?>
+<?import pl.marcinchwedczuk.template.gui.mainwindow.PixelatedImageView?>
 <BorderPane minHeight="600" minWidth="1100" prefHeight="720" prefWidth="1280"
             styleClass="mainWindow" stylesheets="@MainWindow.css"
             xmlns="http://javafx.com/javafx/" xmlns:fx="http://javafx.com/fxml/"
@@ -99,7 +100,10 @@
         <SplitPane dividerPositions="0.6">
             <StackPane fx:id="picturePane" styleClass="picture-pane" minWidth="0" minHeight="0">
                 <Label fx:id="noPictureLabel" styleClass="no-picture-label" text="No picture yet" />
-                <ImageView fx:id="pictureView" preserveRatio="true" smooth="false" />
+                <!-- Not ImageView: it blurs when scaling up, see PixelatedImageView. -->
+                <PixelatedImageView fx:id="pictureView">
+                    <padding><Insets top="8" right="8" bottom="8" left="8" /></padding>
+                </PixelatedImageView>
             </StackPane>
             <TextArea editable="false" fx:id="logTextArea" styleClass="log-window" />
         </SplitPane>

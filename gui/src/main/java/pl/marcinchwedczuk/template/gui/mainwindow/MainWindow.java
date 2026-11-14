@@ -76,7 +76,7 @@ public class MainWindow implements Initializable {
     @FXML private Button saveButton;
 
     @FXML private StackPane picturePane;
-    @FXML private ImageView pictureView;
+    @FXML private PixelatedImageView pictureView;
     @FXML private Label noPictureLabel;
     @FXML private TextArea logTextArea;
 
@@ -141,9 +141,6 @@ public class MainWindow implements Initializable {
         pictureModeComboBox.setItems(FXCollections.observableArrayList(PictureMode.values()));
         pictureModeComboBox.getSelectionModel().select(PictureMode.QVGA_YUYV);
 
-        // Scale the picture to the available space, keeping the aspect ratio.
-        pictureView.fitWidthProperty().bind(picturePane.widthProperty().subtract(16));
-        pictureView.fitHeightProperty().bind(picturePane.heightProperty().subtract(16));
         noPictureLabel.visibleProperty().bind(noPicture);
 
         deviceInfoLabel.textProperty().bind(arduinoConnection.deviceInfo);
