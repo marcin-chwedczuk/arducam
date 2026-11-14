@@ -6,10 +6,15 @@ import pl.marcinchwedczuk.template.domain.protocol.RawImage;
 public final class ImageDecoder {
     private ImageDecoder() { }
 
+    /**
+     * Decodes to a displayable image. Bayer images are demosaiced, white balanced and
+     * gamma corrected; YUYV images already have that done by the camera.
+     */
     public static RgbImage decode(RawImage raw) {
         return switch (raw.format()) {
             case YUYV -> decodeYuyv(raw.width(), raw.height(), raw.data());
-            case BAYER -> decodeBayerBggr(raw.width(), raw.height(), raw.data());
+            case BAYER -> ColorCorrection.correctRawImage(
+                    decodeBayerBggr(raw.width(), raw.height(), raw.data()));
         };
     }
 
@@ -40,6 +45,7 @@ public final class ImageDecoder {
     /**
      * Raw Bayer, 1 byte/pixel, BGGR pattern: even rows {@code B G B G ...},
      * odd rows {@code G R G R ...}. Bilinear demosaicing, edges are clamped.
+     * Result is linear, no white balance or gamma, see {@link ColorCorrection}.
      */
     public static RgbImage decodeBayerBggr(int width, int height, byte[] data) {
         int[] pixels = new int[width * height];

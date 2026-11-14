@@ -62,7 +62,7 @@ class ArducamDeviceTest {
         device.takePicture(PictureMode.QQVGA_YUYV);
 
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "PICTURE fmt=yuyv res=qqvga");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga settle=2000", "PICTURE fmt=yuyv res=qqvga settle=2000");
         assertThat(device.isPowered()).isTrue();
         assertThat(image.width()).isEqualTo(160);
         assertThat(image.format()).isEqualTo(PixelFormat.YUYV);
@@ -81,7 +81,7 @@ class ArducamDeviceTest {
         device.powerOff();
 
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER off");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga settle=2000", "POWER off");
         assertThat(device.isPowered()).isFalse();
     }
 
@@ -96,7 +96,7 @@ class ArducamDeviceTest {
         assertThatThrownBy(() -> device.takePicture(PictureMode.QVGA_YUYV))
                 .isInstanceOf(DeviceException.class)
                 .hasMessageContaining("NO_VSYNC");
-        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "PICTURE fmt=yuyv res=qvga");
+        assertThat(arduino.receivedCommands()).containsExactly("POWER on", "PICTURE fmt=yuyv res=qvga settle=4000");
         assertThat(device.isPowered()).isTrue();
     }
 
@@ -135,7 +135,7 @@ class ArducamDeviceTest {
         device.takePicture(PictureMode.QQVGA_YUYV);
 
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "POWER on", "PICTURE fmt=yuyv res=qqvga");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga settle=2000", "POWER on", "PICTURE fmt=yuyv res=qqvga settle=2000");
     }
 
     @Test
@@ -143,7 +143,7 @@ class ArducamDeviceTest {
         AtomicInteger reads = new AtomicInteger();
         int goodCrc = Crc16Xmodem.compute(IMAGE);
         var arduino = new FakeArduino(cmd -> switch (cmd) {
-            case "PICTURE fmt=yuyv res=qqvga" -> pictureResponse(goodCrc ^ 1);
+            case "PICTURE fmt=yuyv res=qqvga settle=2000" -> pictureResponse(goodCrc ^ 1);
             case "READ" -> concat(
                     dataBlock(IMAGE, 160, 120, "YUYV", reads.incrementAndGet() == 1 ? goodCrc ^ 1 : goodCrc),
                     text("OK READ"));
@@ -155,14 +155,14 @@ class ArducamDeviceTest {
 
         assertThat(image.data()).isEqualTo(IMAGE);
         assertThat(arduino.receivedCommands()).containsExactly(
-                "POWER on", "PICTURE fmt=yuyv res=qqvga", "READ", "READ");
+                "POWER on", "PICTURE fmt=yuyv res=qqvga settle=2000", "READ", "READ");
     }
 
     @Test
     void gives_up_after_max_retries() {
         int badCrc = Crc16Xmodem.compute(IMAGE) ^ 1;
         var arduino = new FakeArduino(cmd -> switch (cmd) {
-            case "PICTURE fmt=yuyv res=qqvga" -> pictureResponse(badCrc);
+            case "PICTURE fmt=yuyv res=qqvga settle=2000" -> pictureResponse(badCrc);
             case "READ" -> concat(dataBlock(IMAGE, 160, 120, "YUYV", badCrc), text("OK READ"));
             default -> standardResponse(cmd);
         });

@@ -4,10 +4,15 @@ import java.time.Duration;
 
 /** Supported {@code PICTURE} configurations, see PROTOCOL.md section 6.7. */
 public enum PictureMode {
-    QQVGA_YUYV("QQVGA 160×120 YUYV", "fmt=yuyv res=qqvga", Duration.ofSeconds(15)),
-    QVGA_YUYV("QVGA 320×240 YUYV", "fmt=yuyv res=qvga", Duration.ofSeconds(25)),
-    // Longer settle time, with the default 1000 ms pictures are over exposed.
-    // Timeout: 35 s suggested by PROTOCOL.md for settle=1000, plus 7 s extra settle time.
+    // PICTURE resets all registers, including auto exposure. Settle for at least ~5 frames,
+    // otherwise exposure varies from shot to shot. Frame periods: PROTOCOL.md section 9.
+    // Timeouts: values suggested by PROTOCOL.md section 8 (for settle=1000) plus the extra settle time.
+
+    /** Frame 400 ms, 5 frames. */
+    QQVGA_YUYV("QQVGA 160×120 YUYV", "fmt=yuyv res=qqvga settle=2000", Duration.ofSeconds(16)),
+    /** Frame 800 ms, 5 frames. */
+    QVGA_YUYV("QVGA 320×240 YUYV", "fmt=yuyv res=qvga settle=4000", Duration.ofSeconds(28)),
+    /** Frame ~800 ms, 10 frames (can be lowered to ~4 s after the firmware clock change). */
     VGA_BAYER("VGA 640×480 Bayer", "fmt=bayer res=vga settle=8000", Duration.ofSeconds(45)),
     COLOR_BARS("Color bars 160×120", "fmt=yuyv res=qqvga pattern=bars auto=off settle=0", Duration.ofSeconds(15));
 

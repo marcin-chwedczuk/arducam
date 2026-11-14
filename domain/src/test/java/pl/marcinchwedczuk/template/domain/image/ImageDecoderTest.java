@@ -34,11 +34,31 @@ class ImageDecoderTest {
         byte[] data = new byte[4 * 4];
         java.util.Arrays.fill(data, (byte) 99);
 
-        RgbImage img = ImageDecoder.decode(new RawImage(4, 4, PixelFormat.BAYER, data));
+        RgbImage img = ImageDecoder.decodeBayerBggr(4, 4, data);
 
         for (int y = 0; y < 4; y++)
             for (int x = 0; x < 4; x++)
                 assertThat(img.rgb(x, y)).isEqualTo(0x636363);
+    }
+
+    @Test
+    void decoded_bayer_is_gamma_corrected() {
+        byte[] data = new byte[4 * 4];
+        java.util.Arrays.fill(data, (byte) 99);
+
+        RgbImage img = ImageDecoder.decode(new RawImage(4, 4, PixelFormat.BAYER, data));
+
+        // 255 * (99/255)^(1/2.2) = 165.8
+        assertThat(img.rgb(0, 0)).isEqualTo(0xa6a6a6);
+    }
+
+    @Test
+    void decoded_yuyv_is_not_gamma_corrected() {
+        byte[] data = {99, (byte) 128, 99, (byte) 128};
+
+        RgbImage img = ImageDecoder.decode(new RawImage(2, 1, PixelFormat.YUYV, data));
+
+        assertThat(img.rgb(0, 0)).isEqualTo(0x636363);
     }
 
     @Test
@@ -50,7 +70,7 @@ class ImageDecoderTest {
             for (int x = 0; x < w; x += 2)
                 data[y * w + x] = (byte) 200;
 
-        RgbImage img = ImageDecoder.decode(new RawImage(w, h, PixelFormat.BAYER, data));
+        RgbImage img = ImageDecoder.decodeBayerBggr(w, h, data);
 
         assertThat(img.rgb(0, 0)).isEqualTo(200);   // B only
         assertThat(img.rgb(1, 1)).isEqualTo(200);   // R site, B interpolated from diagonals
